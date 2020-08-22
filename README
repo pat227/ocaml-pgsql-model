@@ -1,0 +1,342 @@
+The purpose of this project is to provide a convenient manner to
+"model" an existing POSTGRES database. This would be especially useful if a database
+has a large number of tables and fields. This project seeks to provide a
+fast way to generate modules and correct types that match the tables and fields,
+thus sparing us from having to manually create each and assign correct types.
+Other libraries exist in other languages to accomplish similar goals, such as
+JOOQ for java, and ODB for C++. Some call this endeavor "object mapping", and
+ODB for C++ even performs "migration" by which hand written code is used to create
+tables and fields in a database, which is not here supported (yet?). This library
+seeks only to create valid Ocaml modules to describe existing tables, not the
+other way around.
+
+By way of example:
+Let us presume we have a table Foo with the following fields and types:
+ A integer (signed 32 bit)
+ B bigint unsigned (unsigned 64-bit)
+ C varchar(of any length)
+ D timestamp
+ E date
+ F nullable int
+This project would output a module described in foo.ml and foo.mli like so (most of
+the data types are from Jane Street Core, some are customized):
+module Foo = struct
+  type t = {
+    A : Int32.t;
+    B : UInt64_w_sexp.t;
+    C : String.t;
+    D : Time.t;
+    E : Date.t;
+    F : Int64.t option
+  } [@@deriving fields,show,sexp,eq,ord,yojson]
+  ...
+end
+module Foo : sig
+  type t = {
+    A : Int32.t;
+    B : UInt64_w_sexp.t;
+    C : String.t;
+    D : Time.t;
+    E : Date.t;
+    F : Int64.t option
+  } [@@deriving fields,show,sexp,eq,ord,yojson]
+  ...
+end
+
+Command line arguments also control which modules, or all or none, should have type t
+defined as part of a sub-module T for inclusion by way of an "include T" statement in the
+ml file, and furthermore running sub-module T through Core.Comprable.Make(T).
+
+Boiler plate functions are also provided to run queries and return Sets of type t, wrapped
+in Core.Result.t, as well as function for creating some of the SQL needed to insert or update
+records in a table.
+
+The modules created by this project as output should be correct and ready to serve
+as inputs to the Ocaml compiler. If used with many tables or tables with many
+fields, this project should hopefully save somebody a lot of time. At present
+almost all the types are take from Jane Street's Core libraries and this project
+supports Postgre databases. Future support native Ocaml types are
+contemplated. Mysql support is found in another project named "Ocaml-db-model". Each module would also include some support functions for queries
+and creating instances of type t from results of those queries from the same tables.
+
+This project does its own string parsing, rejects
+some combinations of data types and Ocaml data types where clipping
+or overflow might be possible. Library support for signed and unsigned 8,16,32,
+and 64 bit data types is almost total. Needless to say varchar
+clipping is unavoidable given a sufficiently large input string unless we perhaps
+come up with our own length-aware data type as a drop-in replacement. (You may in
+general wish to set your schema to strict mode to reject all out-of-range
+values on insert instead of clipping values to the max or min permissible
+endpoint value of the column's data type.) While on the subject of clipping and
+data-types, perhaps in future we can also create overflow-aware data-types for
+additional safety when inter-operating with a db.
+
+At present this project will output modules with some ppx extensions by default:
+fields, show, sexp, eq, ord, and yojson.
+
+----TODO----Command line options------
+ -> Provide a version without Core?
+ -> Plain modules output - define modules each with a name matching that of
+ a table in the schema and with a type t that is a record (a product type).
+ Each component of each type t record bears the name of a field in the table
+ for which the module is named. The type of each component matches that of
+ it's corresponding field as closely as possible. Null-able fields must be
+ optional. An mli is also created. No functions are defined. Types that are
+ not supported are prohibited, such as 24-bit integer types for which
+ we have no matching type in Ocaml. Some unsigned types are supported. See below
+ for full details on which types are supported. 
+
+ -> with ppx decoration - modules are written with ppx extensions. Supported
+ ppx extensions presently include yojson, sexp, ord, eq, show, and fields.
+
+ -> with query functions - modules are written with (at least) the fields
+ ppx extension and a function of type:
+ conn: -> query:string -> (t list, string) Core.Std.Result.t
+ This function is named get_from_db and requires that any field not of type
+ string be parsed in an appropriate manner, such as for integers of several
+ supported types, dates, time-stamps, etc. Errors must be caught. No other
+ types are supported--yet--such as a field whose type is defined as another
+ module.
+
+-> include serial fields - if some tables contain a Serial data type field
+   we can choose to include it. By default we exclude it. If included. these
+   are always optional. Mysql permits null as a value on insert for fields of
+   type Serial and by default will use an auto-incremented next sequence value.
+   Instances of any type that includes a field that is of type Serial in the
+   db can enjoy a None value of this field if created at run-time and later
+   inserted into the db. Note that if the Serial field is NOT declared with
+   NOT NULL, then inserts that include a null will actually insert a null,
+   not an auto-incremented next in sequence value; so don't do that unless
+   you really mean it.
+
+
+-----------------Mapping of data types is described below: --------------------
+
+POSTGRES:
+
+We use the uint package in opam that provides Ocaml with unsigned integer types, specifically
+8, 16, 32, and 64 bit unsigned integers. We also extend these to play nicely with ppx
+when desired. 
+--------------------------------------------------------------------------------
+BIGSERIAL is alias for  large autoincrementing integer (8 bytes)
+(aka BIGINT UNSIGNED NOT NULL AUTO_INCREMENT UNIQUE in MYSQL) ...  ->
+  uint64
+SERIAL is alias for autoincrementing integer (4 bytes) -> uint32
+SMALLSERIAL is alias for autoincrementing integer (2 bytes) -> uint16
+
+SMALLINT (2 byte aka 16bit values) -> uint16 when unsigned, else unsupported
+INTEGER (4 byte aka 32 bit values) -> Core.Std.Int32 when SIGNED, else uint32 when unsigned
+BIGINT (64 bit values) ->Core.Std.Int64 when SIGNED, else uint64; NOTE that Mysql
+                         only permits values of 63 bits at most--SO USE OCAML's 63 bit integer type?????
+			 Even UNSIGNED the limit is 63 bits; Mysql converts values to
+			 DOUBLE for arithmetic above 63 bits. Exact values can be stored in BigInt column
+			 by using a string else Mysql does a conversion step using Double that can
+			 create rouding errors; a string-to-number conversion involves no such intermediate
+			 step using the Double type.
+  NUMERIC			 
+| DECIMAL -> arbitrary precision numbers, but very slow calculations according to postgres documentation. Up to 131072 digits before the decimal point, up to 16383 digits after the decimal point. FOR NOW USE STRING type until we can get zarith or bignum (DONE) support in the ppx_xml_conv or csvfields 
+   REAL (4 byte variable precision, inexact, 6 decimal digits precision)
+ | DOUBLEPRECISION (8 bytes variable precision, inexact, 15 decimal digits precision -> float
+
+MONEY (8 byte currency amount, 2 decimal digits precision by default set by lc_monetary, range of +/- 92233720368547758.08) -> unsupported at present
+
+|TEXT (variable unlimited length)
+|CHARACTER VARYING (variable limited length)
+|VARCHAR (variable limited length) -> string (the only thing that could go wrong is the length of your string exceeds field width, until we come up with a type perhaps that checks for length overruns.)
+
+|character
+|char (fixed length blank padded) -> unsupported at present
+
+BYTEA (1 or 4 bytes plus actual binary variable length string, aka raw bytes) -> string
+
+| DATE (4 bytes) 
+| TIMESTAMP (8 bytes, 'with' or 'without timezone') -> Core.Std.Date
+
+| TIME (8 bytes 'with' or 'without timezone', but discouraged without) -> Core.Std.Time
+
+INTERVAL -> unsupported at present
+
+BOOLEAN (1 byte) -> bool
+
+enum -> unsupported
+
+TODO:
+geometric types:
+point
+line
+lseg
+box
+path
+polygon
+circle
+
+TODO:
+network address types:
+cidr (7 or 19 bytes, ipv4 or ipv6 networks)
+inet (7 or 19 bytes, ipv4 and ipv6 hosts and networks)
+macaddr (6 bytes, MAC addresses)
+
+BITSTRING  -> ?
+
+TODO:
+Searchable and search optimized text and queries:
+tsvector
+tsquery
+
+TODO:
+uuid
+
+UNSUPORTED:
+xml
+
+USEFUL for storing objects but these types require no added support, just utilize them if we want to store instances (kinda like pickling in python):
+json
+jsonb
+
+todo:
+ARRAY type
+
+
+
+---------------BELOW UNFINISHED------
+
+   DECIMAL UNSIGNED  -> FOR NOW USE STRING tpye until we can get zarith or bignum support in the ppx_xml_conv or csvfields 
+   FLOAT UNSIGNED
+ | DOUBLE UNSIGNED -> UNSUPPORTED    NOTE: Unsigned floating point types in Mysql does not alter the upper range of these types.
+
+
+
+
+
+
+   CHAR[M] where 0<=M<=255 -> unsupported
+ | TINYBLOB
+ | TINYTEXT
+ | MEDIUM BLOB -> unsupported
+
+ENUM -> unsupported? We can get the permitted values and create a type that can be
+  serialized to appropriate values? But it is bad practice to use enums with
+  mysql, so I have heard anyway.
+
+So far that's 12 Ocaml data types from >12 mysql data types, and several more
+mysql data types unsupported in the name of type safety.
+If we create a type that lists all the combinations ... we get 12 * 2 (if field
+is nullable) * 2 (default values) = 48 possible combinations...to many to
+comfortable type. Just use a struct.
+
+This is the map ocaml-mysq uses to map mysql types to ocaml-mysql types:
+static value
+type2dbty (int type)
+{
+  static struct {int mysql; value caml;} map[] = {
+    {FIELD_TYPE_DECIMAL     , Val_long(DECIMAL_TY)},
+    {FIELD_TYPE_TINY        , Val_long(INT_TY)},
+    {FIELD_TYPE_SHORT       , Val_long(INT_TY)},
+    {FIELD_TYPE_LONG        , Val_long(INT_TY)},
+    {FIELD_TYPE_FLOAT       , Val_long(FLOAT_TY)},
+    {FIELD_TYPE_DOUBLE      , Val_long(FLOAT_TY)},
+    {FIELD_TYPE_NULL        , Val_long(STRING_TY)},
+    {FIELD_TYPE_TIMESTAMP   , Val_long(TIMESTAMP_TY)},
+    {FIELD_TYPE_LONGLONG    , Val_long(INT64_TY)},
+    {FIELD_TYPE_INT24       , Val_long(INT_TY)},
+    {FIELD_TYPE_DATE        , Val_long(DATE_TY)},
+    {FIELD_TYPE_TIME        , Val_long(TIME_TY)},
+    {FIELD_TYPE_DATETIME    , Val_long(DATETIME_TY)},
+    {FIELD_TYPE_YEAR        , Val_long(YEAR_TY)},
+    {FIELD_TYPE_NEWDATE     , Val_long(UNKNOWN_TY)},
+    {FIELD_TYPE_ENUM        , Val_long(ENUM_TY)},
+    {FIELD_TYPE_SET         , Val_long(SET_TY)},
+    {FIELD_TYPE_TINY_BLOB   , Val_long(BLOB_TY)},
+    {FIELD_TYPE_MEDIUM_BLOB , Val_long(BLOB_TY)},
+    {FIELD_TYPE_LONG_BLOB   , Val_long(BLOB_TY)},
+    {FIELD_TYPE_BLOB        , Val_long(BLOB_TY)},
+    {FIELD_TYPE_VAR_STRING  , Val_long(STRING_TY)},
+    {FIELD_TYPE_STRING      , Val_long(STRING_TY)},
+    {-1 /*default*/         , Val_long(UNKNOWN_TY)}
+  };
+  int i;
+
+  /* in principle using bsearch() would be better -- but how can
+   * we know that the left side of the map is properly sorted? 
+   */
+
+  for (i=0; map[i].mysql != -1 && map[i].mysql != type; i++)
+    /* empty */ ;
+
+  return map[i].caml;
+}
+----ocaml_mysql does some conversions between mysql types and ocaml_mysql types-----
+let int2ml   str        = int_of_string str
+let decimal2ml   str    = str
+let int322ml str        = Int32.of_string str
+let int642ml str        = Int64.of_string str
+let nativeint2ml str    = Nativeint.of_string str
+let float2ml str        = float_of_string str
+let str2ml   str        = str
+let enum2ml  str        = str
+let blob2ml  str        = str
+...and a few more for date, time, datetime
+----
+(* ml2xxx encodes OCaml values into strings that match the MysQL syntax of 
+   the corresponding type *)
+
+let ml2str str  = "'" ^ escape str ^ "'"
+let ml2rstr conn str = "'" ^ real_escape conn str ^ "'"
+let ml2blob     = ml2str
+let ml2rblob    = ml2rstr
+let ml2int x    = string_of_int x
+let ml2decimal x    = x
+let ml322int x  = Int32.to_string x
+let ml642int x  = Int64.to_string x
+let mlnative2int x = Nativeint.to_string x
+let ml2float x  = string_of_float x
+let ml2enum x   = escape x
+let ml2renum x  = real_escape x
+...and a few more for date, time, datetime
+--------------------------------------------
+
+------FROM mysql_com.h-------x
+#define CLIENT_MULTI_QUERIES    CLIENT_MULTI_STATEMENTS    
+#define FIELD_TYPE_DECIMAL     MYSQL_TYPE_DECIMAL
+#define FIELD_TYPE_NEWDECIMAL  MYSQL_TYPE_NEWDECIMAL
+#define FIELD_TYPE_TINY        MYSQL_TYPE_TINY
+#define FIELD_TYPE_SHORT       MYSQL_TYPE_SHORT
+#define FIELD_TYPE_LONG        MYSQL_TYPE_LONG
+#define FIELD_TYPE_FLOAT       MYSQL_TYPE_FLOAT
+#define FIELD_TYPE_DOUBLE      MYSQL_TYPE_DOUBLE
+#define FIELD_TYPE_NULL        MYSQL_TYPE_NULL
+#define FIELD_TYPE_TIMESTAMP   MYSQL_TYPE_TIMESTAMP
+#define FIELD_TYPE_LONGLONG    MYSQL_TYPE_LONGLONG
+#define FIELD_TYPE_INT24       MYSQL_TYPE_INT24
+#define FIELD_TYPE_DATE        MYSQL_TYPE_DATE
+#define FIELD_TYPE_TIME        MYSQL_TYPE_TIME
+#define FIELD_TYPE_DATETIME    MYSQL_TYPE_DATETIME
+#define FIELD_TYPE_YEAR        MYSQL_TYPE_YEAR
+#define FIELD_TYPE_NEWDATE     MYSQL_TYPE_NEWDATE
+#define FIELD_TYPE_ENUM        MYSQL_TYPE_ENUM
+#define FIELD_TYPE_SET         MYSQL_TYPE_SET
+#define FIELD_TYPE_TINY_BLOB   MYSQL_TYPE_TINY_BLOB
+#define FIELD_TYPE_MEDIUM_BLOB MYSQL_TYPE_MEDIUM_BLOB
+#define FIELD_TYPE_LONG_BLOB   MYSQL_TYPE_LONG_BLOB
+#define FIELD_TYPE_BLOB        MYSQL_TYPE_BLOB
+#define FIELD_TYPE_VAR_STRING  MYSQL_TYPE_VAR_STRING
+#define FIELD_TYPE_STRING      MYSQL_TYPE_STRING
+#define FIELD_TYPE_CHAR        MYSQL_TYPE_TINY
+#define FIELD_TYPE_INTERVAL    MYSQL_TYPE_ENUM
+#define FIELD_TYPE_GEOMETRY    MYSQL_TYPE_GEOMETRY
+#define FIELD_TYPE_BIT         MYSQL_TYPE_BIT
+
+
+
+NOTE:
+Take precautions with special chars in passwords or any other user supplied input, ie, single quote it or else the command line shell will screw you up. Double quotes still permit shell expansion.
+
+USAGE with OCAMLBUILD:
+Within a makefile, use as such with a target named tables that depends on nothing and generates one module per table and wraps them all in one module too (this presumes the project is already installed via opam or available somewhere on the local filesystem:
+tables:
+	ocaml_mysql_model.native -host <hostip> -user <user> -password <password> -db <dbname> -table-regexp <ifAnyRestrictionsNeeded>
+	ocamlbuild -classic-display -use-ocamlfind -j 1 -tag debug -tag thread -tag principal -r -package 'core pcre mysql ppx_deriving ppx_deriving.show ppx_deriving_yojson ppx_sexp_conv ppx_fields_conv ppx_deriving.eq ppx_deriving.ord uint ppx_type_conv sexplib ocaml_db_model' -build-dir build -I src/lib src/tables/tables.<yourtargethere>
+
+
+USAGE WITH DUNE:
+It works...just need to document it here...still need to experiment with dune a bit more to get it to overwrite existing files and report success.
