@@ -1,6 +1,6 @@
-module Utilities = Ocaml_db_model.Utilities
-module Model = Ocaml_db_model.Model
-module Sql_supported_types = Ocaml_db_model.Sql_supported_types
+module Utilities = Ocaml_psql_model.Utilities
+module Model = Ocaml_psql_model.Model
+module Sql_supported_types = Ocaml_psql_model.Sql_supported_types
 module Command = struct
 (*===TODO===
       1) Extend string type to be length aware and avoid truncation with mysql varchar and text field limits 
@@ -19,7 +19,7 @@ module Command = struct
 	      allcomparable host user password database destination () =
     try
       (*--TODO--do not invoke getcon here, and stop passing it around*)
-      let conn = Utilities.getcon ~host ~user ~password ~database in
+      let conn = Utilities.getcon ~host ~user ~password ~dbname:database in
       let fields_map =
 	Model.get_fields_map_for_all_tables
 	  ~regexp_opt ~table_list_opt ~conn ~schema:database in

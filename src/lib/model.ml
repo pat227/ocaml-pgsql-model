@@ -3,7 +3,6 @@ module Utilities = Utilities.Utilities
 module Table = Table.Table
 module Sql_supported_types = Sql_supported_types.Sql_supported_types
 module Types_we_emit = Types_we_emit.Types_we_emit
-module Mysql = Mysql
 module Model = struct
   type t = {
     col_name : string; 
@@ -13,79 +12,106 @@ module Model = struct
     is_primary_key : bool;
   } [@@deriving show, fields]
 
-  let get_fields_for_given_table ?conn ~table_name =
-    let open Mysql in
+  let get_fields_for_given_table ?conn ~schema ~table_name =
     let open Core in 
-    (*Only column_type gives us the acceptable values of an enum type if present, 
-      unsigned; use the column_comment to input per field directives for ppx 
-      extensions...way down the road, such as key or default for json ppx extension. 
-      In future for compare ppx extension, perhaps set all fields to return zero 
-      EXCEPT for the primary key of table? This is also useful for Core Comparable 
-      interface.*)
-    let fields_query = String.concat [
-			   "SELECT column_name, is_nullable, column_comment,
-			    column_type, data_type, column_key, extra, column_comment FROM 
-			    information_schema.columns 
-			    WHERE table_name='";table_name;"';"] in
-    (* numeric_scale, column_default, character_maximum_length, 
-    character_octet_length, numeric_precision,*)
+    (*partly taken from https://stackoverflow.com/questions/18516931/find-primary-key-of-table-in-postgresql-from-information-schema-with-only-select
+      and Taken from http://wiki.postgresql.org/wiki/Retrieve_primary_key_columns.   Primary keys are denoted as *_pkey in the T.index_name field of this query.*)
+    let fields_query =
+      String.concat [
+	  "SELECT table_schema,";schema;".information_schema.columns.table_name, ";schema;".information_schema.columns.column_name, T.index_name,default_value, \
+           ordinal_position, column_default, is_nullable, data_type, character_maximum_length, numeric_precision,numeric_precision_radix, numeric_scale, \
+           datetime_precision, is_updatable \
+           FROM ";schema;".information_schema.columns \
+           LEFT JOIN \
+           (SELECT t.relname as table_name, i.relname as index_name, a.attname as column_name, d.adsrc as default_value \
+            FROM pg_class t \
+            JOIN pg_attribute a ON a.attrelid = t.oid join pg_index ix ON t.oid = ix.indrelid AND a.attnum = ANY(ix.indkey) \
+            JOIN pg_class i ON i.oid = ix.indexrelid \
+            LEFT JOIN pg_attrdef d ON d.adrelid = t.oid AND d.adnum = a.attnum \
+            WHERE t.relkind = 'r' \
+            AND t.relname IN ('";table_name;"')) AS T ON \
+           T.table_name=";schema;".information_schema.columns.table_name \
+           AND T.column_name=";schema;".information_schema.columns.column_name \
+           WHERE ";schema;".information_schema.columns.table_name='";table_name;"';"] in
     let conn = (fun c -> if is_none c then
 			   Utilities.getcon_defaults ()
 			 else
 			   Option.value_exn c) conn in 
-    let rec helper accum results nextrow =
-      (match nextrow with
-       | None -> Core.Result.Ok accum
-       | Some arrayofstring ->
-	  try
-	    (let col_name =
-	       Utilities.extract_field_as_string_exn
-		 ~fieldname:"column_name" ~results ~arrayofstring in 
-	     let data_type =
-	       Utilities.extract_field_as_string_exn
-		 ~fieldname:"data_type" ~results ~arrayofstring in 
-	     let col_type =
-	       Utilities.extract_field_as_string_exn
-		 ~fieldname:"column_type" ~results ~arrayofstring in 
-	     let is_nullable =
-	       Utilities.parse_bool_field_exn
-		 ~fieldname:"is_nullable" ~results ~arrayofstring in 
-	     let is_primary_key =
-	       let is_pri = Utilities.extract_field_as_string_exn
-			      ~fieldname:"column_key" ~results ~arrayofstring in 
-	       (fun x -> match x with "pri" -> true | _ -> false) is_pri in
-	     (*--todo--convert data types and nullables into ml types as 
-               strings for use in writing a module*)
-	     let type_for_module =
-	       Sql_supported_types.one_step ~data_type ~col_type ~col_name in
-	     let new_field_record =
-	       Fields.create
-		 ~col_name
-		 ~table_name
-		 ~data_type:type_for_module
-		 ~is_nullable
-		 ~is_primary_key in
-	     let newmap = String.Map.add_multi accum ~key:table_name ~data:new_field_record in 
-	     helper newmap results (fetch results)
-	    )
+    let rec helper accum qresult tuple_number tuple_count =
+      if (tuple_number + 1) >= tuple_count then
+        Core.Result.Ok accum
+      else 
+	try
+	  (let col_name =
+	     Utilities.extract_field_as_string_exn
+	       ~fieldname:"column_name" ~qresult ~tuple:tuple_number in 
+	   let data_type =
+	     Utilities.extract_field_as_string_exn
+	       ~fieldname:"data_type" ~qresult ~tuple:tuple_number in 
+	   let col_type =
+	     Utilities.extract_field_as_string_exn
+	       ~fieldname:"column_type" ~qresult ~tuple:tuple_number in 
+	   let is_nullable =
+	     Utilities.parse_bool_field_exn
+	       ~fieldname:"is_nullable" ~qresult ~tuple:tuple_number in 
+	   let is_primary_key =
+	     let is_pri = Utilities.extract_field_as_string_exn
+			    ~fieldname:"index_name" ~qresult ~tuple:tuple_number in 
+	     Core.String.is_substring is_pri ~substring:"_pkey" in
+	   let type_for_module =
+	     Sql_supported_types.one_step ~data_type ~col_type ~col_name in
+	   let new_field_record =
+	     Fields.create
+	       ~col_name
+	       ~table_name
+	       ~data_type:type_for_module
+	       ~is_nullable
+	       ~is_primary_key in
+	   let newmap = Core.String.Map.add_multi accum ~key:table_name ~data:new_field_record in
+           helper newmap qresult (tuple_number+1) tuple_count
+	  )
 	  with err ->
 	    let () = Utilities.print_n_flush
-		       (String.concat ["\nError ";(Exn.to_string err);
+		       (String.concat ["\nModel::get_fields_for_given_table() Error ";(Exn.to_string err);
 				       " getting tables from db."]) in
-	    Core.Result.Error "Failed to get tables from db."
-      ) in
-    let queryresult = exec conn fields_query in
-    let isSuccess = status conn in
+	    Core.Result.Error "Model::get_fields_for_given_table() Failed to get tables from db." in
+    let queryresult = conn#exec fields_query in
+    let isSuccess = queryresult#status in
     match isSuccess with
-    | StatusEmpty ->  Core.Result.Ok String.Map.empty
-    | StatusError _ -> 
-       let () = Utilities.print_n_flush
-		  ("Query for table names returned nothing.  ... \n") in
+    | Tuples_ok
+      | Single_tuple ->
+       (match queryresult#ntuples with
+	| 0 -> (*should actually be impossible*)
+           let () = Utilities.closecon conn in Core.Result.Ok Core.String.Map.empty
+	| _ ->
+           let map_result = helper Core.String.Map.empty queryresult 0 (queryresult#ntuples) in
+	   let () = Utilities.closecon conn in
+           let () = Gc.full_major () in
+	   map_result
+       )
+    | Bad_response 
+    | Nonfatal_error 
+    | Fatal_error ->
+       let s = queryresult#error in 
+       let () = Utilities.print_n_flush (Core.String.concat ["model::get_fields_for_given_table() \
+			                                      Query of past scan requests failed. Sql error? %s \n";s]) in
+       let () = Gc.full_major () in
+       let () = Utilities.closecon conn in Core.Result.Ok String.Map.empty
+    (*raise (Assert_failure ("model::get_fields_for_given_table()",98,0))*)
+    (*None of the below should ever happen, at least not with plain vanilla queries*)
+    | Empty_query 
+      | Copy_out 
+      | Copy_in 
+      | Copy_both 
+      | Command_ok -> 
+       (* let () = print_n_flush (Core.String.concat ["model::get_fields_for_given_table() \
+	  Unexpected branch. Error line 106.\n"]) in *)
+       let () = Gc.full_major () in
        let () = Utilities.closecon conn in
-       Core.Result.Error "model.ml::get_fields_for_given_table() Error in sql"
-    | StatusOK -> (*let () = Utilities.print_n_flush "\nGot fields for table." in *)
-		  helper String.Map.empty queryresult (fetch queryresult);;
-
+       Core.Result.Error "model::get_fields_for_given_table() unuexpected COMMAND OK returned."
+    (*raise (Failure "model::get_fields_for_given_table() \
+      Unexpected return code from db.") *)
+                     
   let make_regexp s =
     let open Core in 
     match s with
@@ -123,17 +149,17 @@ module Model = struct
   let get_fields_map_for_all_tables ~regexp_opt ~table_list_opt ~conn ~schema =
     let open Core in
     let open Core.Result in 
-    let table_list_result = Table.get_tables ~conn ~schema in
+    let table_list_result = Table.get_tables ~conn () in
     if is_ok table_list_result then
       let tables = ok_or_failwith table_list_result in
       let regexp_opt = make_regexp regexp_opt in
       let table_list_opt = parse_list table_list_opt in 
       let rec helper ltables map =
 	let update_map ~table_name =
-	  let fs_result = get_fields_for_given_table ~conn ~table_name in
+	  let fs_result = get_fields_for_given_table ~conn ~table_name ~schema in
 	  if is_ok fs_result then
 	    let newmap = ok_or_failwith fs_result in
-	     let combinedmaps =
+	    let combinedmaps =
 	       Map.merge
 		 map newmap
 		 ~f:
@@ -152,16 +178,16 @@ module Model = struct
 	   (**---filter on regexp or list here, if present at all---*)
 	   (match regexp_opt, table_list_opt with
 	    | None, Some l ->
-	       if List.mem l h.Table.table_name ~equal:String.equal then
-		 let newmap = update_map ~table_name:h.Table.table_name in
+	       if List.mem l h.Table.tablename ~equal:String.equal then
+		 let newmap = update_map ~table_name:h.Table.tablename in
 		 helper t newmap
 	       else
 		 helper t map
 	    | Some r, None ->
 	       (try
 		   let _intarray =
-		     Pcre.pcre_exec ?rex:(Some r) h.Table.table_name in
-		   let newmap = update_map ~table_name:h.Table.table_name in
+		     Pcre.pcre_exec ?rex:(Some r) h.Table.tablename in
+		   let newmap = update_map ~table_name:h.Table.tablename in
 		   helper t newmap
 		 with
 		 | _ -> helper t map
@@ -169,14 +195,14 @@ module Model = struct
 	    | Some r, Some _l -> (*--presume regexp over list---*)
 	       (try
 		   let _intarray =
-		     Pcre.pcre_exec ?rex:(Some r) h.Table.table_name in
-		   let newmap = update_map ~table_name:h.Table.table_name in
+		     Pcre.pcre_exec ?rex:(Some r) h.Table.tablename in
+		   let newmap = update_map ~table_name:h.Table.tablename in
 		   helper t newmap
 		 with
 		 | _ -> helper t map
 	       )
 	    | None, None -> 
-	       let newmap = update_map ~table_name:h.Table.table_name in
+	       let newmap = update_map ~table_name:h.Table.tablename in
 	       helper t newmap
 	   ) in
       helper tables String.Map.empty
@@ -185,8 +211,7 @@ module Model = struct
       String.Map.empty;;
     
   (**Construct an otherwise tedious function that creates instances of type t from
-     a query; for each field in struct, get the string option from the string 
-     option array provided by Mysql under the same name, parse it into it's correct 
+     a query; for each field in struct, get the string option, parse it into it's correct 
      type using the correct conversion function, and then use Fields.create to 
      create a new record, add it to an accumulator, and finally return that 
      accumulator after we have exhausted all the records returned by the query. 
@@ -197,15 +222,14 @@ module Model = struct
     let open Core in 
     let preamble =
       String.concat ["  let get_from_db ~query =\n";
-		     "    let open Mysql in \n";
 		     "    let open Core in \n";
 		     "    let conn = Utilities.getcon ~host:\"";host;"\" ~user:\"";user;"\" \n";
-		     "                               ~password:\"";password;"\" ~database:\"";database;"\" in"] in
+		     "                               ~password:\"";password;"\" ~dbname:\"";database;"\" in"] in
     let helper_preamble =
       Core.String.concat
-	["    let rec helper accum results nextrow = \n";
-	 "      (match nextrow with \n";
-	 "       | None -> Core.Result.Ok accum \n       | Some arrayofstring ->\n";
+	["    let rec helper accum qresult tuple_number count = \n";
+	 "      if (tuple_number + 1) >= tuple_count then \n";
+	 "        Core.Result.Ok accum \n       else\n";
 	 "          try "] in
     let suffix =
       String.concat 

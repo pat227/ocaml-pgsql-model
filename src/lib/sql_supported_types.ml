@@ -1,103 +1,81 @@
+(*Unsigned types do not exist in postgresql, for the most part, unless you create them yourself, and we're not supporting that at present.
+  See https://stackoverflow.com/questions/20810134/why-unsigned-integer-is-not-available-in-postgresql *)
 open Core
-module Uint64_extended = Uint64_extended.Uint64_extended
-module Uint32_extended = Uint32_extended.Uint32_extended
-module Uint16_extended = Uint16_extended.Uint16_extended
-module Uint8_extended = Uint8_extended.Uint8_extended
-(*Types from mysql that are relatively more safely mapped to Ocaml*)
 module Types_we_emit = Types_we_emit.Types_we_emit
 module Utilities = Utilities.Utilities
 module Sql_supported_types = struct
   type t =
-      TINYINT
-    | TINYINT_UNSIGNED
-    | TINYINT_BOOL
-    | SMALLINT_UNSIGNED
-    | INTEGER
-    | INTEGER_UNSIGNED
-    | BIGINT
-    | BIGINT_UNSIGNED
-    | DECIMAL
-    | FLOAT
-    | DOUBLE
+    | BIGINT (*is just a 64-bit signed int*)
+    | BIGSERIAL (*zero is not permitted!!!*)
+    | BOOLEAN
+    | BYTEA
+    | CHAR
     | DATE
-    | DATETIME
-    | TIMESTAMP
-    | BINARY
-    | VARBINARY
-    | TINYTEXT
+    | DECIMAL
+    | DOUBLEPRECISION
+    | INTEGER (*signed 32 bit integer, -2147483648 through +214743647*)
+    | MONEY
+    | NUMERIC
+ (* | REAL unsupported - use DOUBLE precision floats instead*)
+    | SERIAL (*this is almost an unsigned 32 bit integer except zero is not a valid value*)
+ (* | SMALLINT this is a signed 16-bit number, range is -32768 through 32767 *)
+ (* | SMALLSERIAL unsupported - range is almost that of unsigned 15-bit, read that again, 15! bit, integer, 1 through 32767. Why! *)
     | TEXT
-    | MEDIUMTEXT
+    | TIME
+    | TIMESTAMP
     | VARCHAR
-    | BLOB
-  (*| ENUM*)
     | UNSUPPORTED
 
-  (*--by default just use core int 64 type...*)
   let ml_type_of_supported_sql_type t =
-    match t with
-    | TINYINT -> Core.Result.Ok Types_we_emit.CoreInt32  (*====TODO===find int8 type or make one *)
-    | TINYINT_UNSIGNED -> Core.Result.Ok Types_we_emit.Uint8_extended_t
-    | TINYINT_BOOL -> Core.Result.Ok Types_we_emit.Bool
-    | SMALLINT_UNSIGNED -> Core.Result.Ok Types_we_emit.Uint16_extended_t
-    | INTEGER -> Core.Result.Ok Types_we_emit.CoreInt64
-    | INTEGER_UNSIGNED -> Core.Result.Ok Types_we_emit.Uint64_extended_t
+    match t with 
     | BIGINT -> Core.Result.Ok Types_we_emit.CoreInt64
-    | BIGINT_UNSIGNED -> Core.Result.Ok Types_we_emit.Uint64_extended_t
-    | DECIMAL -> Core.Result.Ok Types_we_emit.Bignum
-    | FLOAT 
-    | DOUBLE -> Core.Result.Ok Types_we_emit.Float
+    | BIGSERIAL -> Core.Result.Ok Types_we_emit.CoreInt64
+    | BOOLEAN -> Core.Result.Ok Types_we_emit.Bool
+    | BYTEA
+    | CHAR -> Core.Result.Ok Types_we_emit.String
     | DATE -> Core.Result.Ok Types_we_emit.Date
-    | DATETIME 
+    | DECIMAL -> Core.Result.Ok Types_we_emit.Bignum
+    | DOUBLEPRECISION -> Core.Result.Ok Types_we_emit.Float      
+    | INTEGER -> Core.Result.Ok Types_we_emit.CoreInt32
+    | MONEY -> Core.Result.Ok Types_we_emit.Bignum
+    | NUMERIC -> Core.Result.Ok Types_we_emit.Bignum
+  (*| REAL -> unsupported - use DOUBLE precision and floats *)
+    | SERIAL -> Core.Result.Ok Types_we_emit.CoreInt32
+  (*| SMALLINT ->
+    | SMALLSERIAL unsupported *)
+    | TEXT -> Core.Result.Ok Types_we_emit.String
+    | TIME -> Core.Result.Ok Types_we_emit.Time
     | TIMESTAMP -> Core.Result.Ok Types_we_emit.Time
-    | BINARY
-    | BLOB
-      (*without checking length of strings we are open to runtime errors or truncation of stored values==TODO==offer a length checked String type*)
-    | TINYTEXT
-    | TEXT
-    | MEDIUMTEXT
-    | VARBINARY
     | VARCHAR -> Core.Result.Ok Types_we_emit.String
-    (*| ENUM*)
-    | UNSUPPORTED -> Core.Result.Error "to_ml_type::UNSUPPORTED_TYPE" 
-	
-  (*Given the data_type and column_type fields from info schema, determine if the mysql 
+    | UNSUPPORTED -> Core.Result.Error "to_ml_type::UNSUPPORTED_TYPE"
+
+  (*Given the data_type and column_type fields from info schema, determine if the data
     type is supported or not, and if so which type; the data_type field is very easy to 
-    match on but lacks the unsigned flag. The unsigned flag is disallowed if not in 
-    combination with a numeric type in mysql, so we'll never see it here except with a 
-    numeric type. *)
+    match on. NOTE that unsigned data types DO NOT EXIST in postgresql, unlike mysql. *)
   let of_col_type_and_flags ~data_type ~col_type ~col_name =
     let open Core in 
-    let is_unsigned = String.is_substring col_type ~substring:"unsigned" in
-    let the_col_type ~is_unsigned ~data_type =
-      match is_unsigned, data_type with
-      | _, "tinyint" -> if String.is_substring col_name ~substring:"is_" then TINYINT_BOOL else TINYINT_UNSIGNED
-      | true, "smallint" -> SMALLINT_UNSIGNED
-      | true, "int" 
-      | true, "integer" -> INTEGER_UNSIGNED
-      | true, "bigint" -> BIGINT_UNSIGNED
-      | false, "int" 
-      | false, "integer" -> INTEGER
-      | false, "bigint" -> BIGINT
-      (*Decimals might be signed in mysql, but the bignum type is not; can handle
-        signed and unsigned equally well without making distinction between the 
-        two*)
-      | _, "decimal" -> DECIMAL
-      | _, "float"
-      | _, "double" -> FLOAT
-      | false, "date" -> DATE 
-      | false, "datetime" -> DATETIME
-      | false, "timestamp" -> TIMESTAMP
-      | false, "blob"
-      | false, "binary"
-      | false, "varbinary"
-      | false, "tinytext"
-      | false, "text"
-      | false, "mediumtext" 
-      | false, "varchar" -> VARCHAR
-      | _, _ -> let () = Utilities.print_n_flush (String.concat [col_name;" with type ";col_type;" is not supported."])
-		in UNSUPPORTED in
-    the_col_type ~is_unsigned ~data_type;;
-    
+    let the_col_type ~data_type =
+      match data_type with
+      | "bigint" -> BIGINT
+      | "bigserial" -> BIGINT
+      | "boolean" -> BOOLEAN
+      | "bytea" -> BYTEA
+      | "char" -> CHAR
+      | "date" -> DATE
+      | "decimal" -> DECIMAL
+      | "double precision" -> DOUBLEPRECISION
+      | "integer" -> INTEGER
+      | "money" -> MONEY
+      | "numeric" -> NUMERIC
+      | "serial" -> SERIAL
+      | "text" -> TEXT
+      | "time" -> TIMESTAMP
+      | "timestamp" -> TIMESTAMP
+      | "character varying" -> VARCHAR
+      | _ -> let () = Utilities.print_n_flush (String.concat [col_name;" with type ";col_type;" is not supported."])
+	     in UNSUPPORTED in
+    the_col_type ~data_type;;
+
   let one_step ~data_type ~col_type ~col_name =
     let supported_t = of_col_type_and_flags ~data_type ~col_type ~col_name in
     let name_result = ml_type_of_supported_sql_type supported_t in
@@ -108,23 +86,3 @@ module Sql_supported_types = struct
     else 
       raise (Failure "Unsupported sql type.")
 end 
-(*  let of_string s =
-    match s with
-      "tinyint_bool" -> TINYINT_BOOL
-    | "tinyint_unsigned" -> TINYINT_UNSIGNED
-    | "smallint_unsigned" -> SMALLINT_UNSIGNED
-    | "integer" 
-    | "int" -> INTEGER
-    | "integer_unsigned"
-    | "int_unsigned" -> INTEGER_UNSIGNED
-    | "bigint" -> BIGINT
-    | "bigint_unsigned" -> BIGINT_UNSIGNED 
-    | "date" -> DATE
-    | "time" 
-    | "datetime" -> DATETIME
-    | "timestamp" -> TIMESTAMP
-    | "blob" -> BLOB
-    | "varchar" -> VARCHAR
-    | _ -> UNSUPPORTED
-end
- *)

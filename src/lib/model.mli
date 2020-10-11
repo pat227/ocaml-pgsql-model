@@ -14,9 +14,9 @@ module Model : sig
 
   val get_fields_map_for_all_tables :
     regexp_opt:string option -> table_list_opt:string option ->
-    conn:Mysql.dbd -> schema:string -> t list Core.String.Map.t 
+    conn:Postgresql.connection -> schema:string -> t list Core.String.Map.t 
   val get_fields_for_given_table :
-    ?conn:Mysql.dbd ->
+    ?conn:Postgresql.connection -> schema:string ->
     table_name:Core.String.Map.Key.t ->
     (t list Core.String.Map.t, string) Core.Result.t 
   val construct_body : table_name:string -> map:t list Core.String.Map.t -> 

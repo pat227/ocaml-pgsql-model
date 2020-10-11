@@ -1,7 +1,3 @@
-module Uint8_extended = Uint8_extended.Uint8_extended
-module Uint16_extended = Uint16_extended.Uint16_extended
-module Uint32_extended = Uint32_extended.Uint32_extended
-module Uint64_extended = Uint64_extended.Uint64_extended
 module Bignum_extended = Bignum_extended.Bignum_extended
 module Date_extended = Date_extended.Date_extended
 module Date_time_extended = Date_time_extended.Date_time_extended
@@ -10,7 +6,6 @@ open Core
 module Utilities = struct
 
   let getcon ?(host="127.0.0.1") ~dbname ~password ~user =
-    let open Postgresql in 
     new Postgresql.connection ~host ~dbname ~password ~user ();;
 
   let getcon_defaults () =
@@ -31,14 +26,14 @@ module Utilities = struct
        let () = print_n_flush (Core.String.concat [h;sep]) in
        print_n_flush_alist ~sep t;;
   (*--try not to use these but instead use query parameters*)
-  let serialize_optional_field ~field ~conn =
+  let serialize_optional_field ~field ~(conn:Postgresql.connection) =
     match field with
     | None -> "NULL"
-    | Some s -> "'" ^ (Postgresql.escape_string s) ^ "'";;
-  let serialize_optional_field_with_default ~field ~conn ~default =
+    | Some s -> Core.String.concat ["'" ; (conn#escape_string s) ; "'"];;
+  let serialize_optional_field_with_default ~field ~(conn:Postgresql.connection) ~default =
     match field with
-    | None -> default
-    | Some s -> "'" ^ (Postgresql.escape_string s) ^ "'";;
+    | None -> Core.String.concat ["'" ; (conn#escape_string default) ; "'"]
+    | Some s -> Core.String.concat ["'" ; (conn#escape_string s) ; "'"];;
   
   let serialize_boolean_field ~field =
     match field with
@@ -100,12 +95,11 @@ module Utilities = struct
   let parse_64bit_int_field_exn ~field =
     Core.Int64.of_string field
  *)
-  let extract_field_as_string_exn ~fieldname ~result ~tuple =
-    let open Postgresql in 
+  let extract_field_as_string_exn ~fieldname ~(qresult:Postgresql.result) ~tuple =
     try
       Core.String.strip
 	~drop:Core.Char.is_whitespace
-	(result#getvalue tuple (result#fnumber fieldname))
+	(qresult#getvalue tuple (qresult#fnumber fieldname))
     with
     | _ ->
        let () = print_n_flush
@@ -113,11 +107,11 @@ module Utilities = struct
                      ["\nutilities.ml::extract_field_as_string_exn() failed, most likely bad field name:";fieldname]) in
        raise (Failure "utilities.ml::extract_field_as_string_exn() failed. Most likely bad field name")
 
-  let extract_optional_field ~fieldname ~result ~tuple =
-    if (result#getisnull result (result#getfnumber fieldname)) then
+  let extract_optional_field ~fieldname ~(qresult:Postgresql.result) ~tuple =
+    if (qresult#getisnull 1 (qresult#fnumber fieldname)) then
       None
     else
-      Some (extract_field_as_string_exn ~fieldname ~result ~tuple)
+      Some (extract_field_as_string_exn ~fieldname ~qresult ~tuple)
 
   (*
   let parse_int_field_exn ~fieldname ~results ~arrayofstring =
@@ -131,17 +125,17 @@ module Utilities = struct
     | None -> None;;
      *)
 
-  let parse_int64_field_exn ~fieldname ~result ~tuple =
+  let parse_int64_field_exn ~fieldname ~qresult ~tuple =
     try
-      let s = extract_field_as_string_exn ~fieldname ~result ~tuple in
+      let s = extract_field_as_string_exn ~fieldname ~qresult ~tuple in
       Core.Int64.of_string s
     with err ->
 	 let () = print_n_flush "\nutilities::parse_int64_field_exn() failed" in
 	 raise err;;
 
-  let parse_int32_field_exn ~fieldname ~result ~tuple =
+  let parse_int32_field_exn ~fieldname ~qresult ~tuple =
     try
-      let s = extract_field_as_string_exn ~fieldname ~result ~tuple in
+      let s = extract_field_as_string_exn ~fieldname ~qresult ~tuple in
       Core.Int32.of_string s
     with err ->
       let () = print_n_flush "\nutilities::parse_int32_field_exn() failed" in
@@ -153,105 +147,66 @@ module Utilities = struct
     | Some s -> let i = Int.of_string s in Some i
     | None -> None;;*)
     
-  let parse_optional_int64_field_exn ~fieldname ~result ~tuple =
-    let s_opt = extract_optional_field ~fieldname ~result ~tuple in
+  let parse_optional_int64_field_exn ~fieldname ~qresult ~tuple =
+    let s_opt = extract_optional_field ~fieldname ~qresult ~tuple in
     match s_opt with
     | Some s -> let i = Int64.of_string s in Some i
     | None -> None;;
 
-  let parse_optional_int32_field_exn ~fieldname ~result ~tuple =
-    let s_opt = extract_optional_field ~fieldname ~result ~tuple in
+  let parse_optional_int32_field_exn ~fieldname ~qresult ~tuple =
+    let s_opt = extract_optional_field ~fieldname ~qresult ~tuple in
     match s_opt with
     | Some s -> let i = Int32.of_string s in Some i
     | None -> None;;
     
-  let parse_uint8_field_exn ~fieldname ~result ~tuple =
-    let s = extract_field_as_string_exn ~fieldname ~result ~tuple in 
-    Uint8_extended.of_string s;;
 
-  let parse_optional_uint8_field_exn ~fieldname ~result ~tuple =
-    let s_opt = extract_optional_field ~fieldname ~result ~tuple in
-    match s_opt with
-    | Some s -> let i = Uint8_extended.of_string s in Some i
-    | None -> None;;
-
-  let parse_uint16_field_exn ~fieldname ~result ~tuple =
-    let s = extract_field_as_string_exn ~fieldname ~result ~tuple in 
-    Uint16_extended.of_string s;;
-
-  let parse_optional_uint16_field_exn ~fieldname ~result ~tuple =
-    let s_opt = extract_optional_field ~fieldname ~result ~tuple in
-    match s_opt with
-    | Some s -> let i = Uint16_extended.of_string s in Some i
-    | None -> None;;
-
-  let parse_uint32_field_exn ~fieldname ~result ~tuple =
-    let s = extract_field_as_string_exn ~fieldname ~result ~tuple in 
-    Uint32_extended.of_string s;;
-
-  let parse_optional_uint32_field_exn ~fieldname ~result ~tuple =
-    let s_opt = extract_optional_field ~fieldname ~result ~tuple in
-    match s_opt with
-    | Some s -> let i = Uint32_extended.of_string s in Some i
-    | None -> None;;
-
-  let parse_uint64_field_exn ~fieldname ~result ~tuple =
-    let s = extract_field_as_string_exn ~fieldname ~result ~tuple in 
-    Uint64_extended.of_string s;;
-
-  let parse_optional_uint64_field_exn ~fieldname ~result ~tuple =
-    let s_opt = extract_optional_field ~fieldname ~result ~tuple in
-    match s_opt with
-    | Some s -> let i = Uint64_extended.of_string s in Some i
-    | None -> None;;
-
-  let parse_bignum_field_exn ~fieldname ~result ~tuple =
-    let s = extract_field_as_string_exn ~fieldname ~result ~tuple in
+  let parse_bignum_field_exn ~fieldname ~qresult ~tuple =
+    let s = extract_field_as_string_exn ~fieldname ~qresult ~tuple in
     Bignum_extended.of_string s;;
 
-  let parse_optional_bignum_field_exn ~fieldname ~result ~tuple =
-    let s_opt = extract_optional_field ~fieldname ~result ~tuple in
+  let parse_optional_bignum_field_exn ~fieldname ~(qresult:Postgresql.result) ~tuple =
+    let s_opt = extract_optional_field ~fieldname ~qresult ~tuple in
     match s_opt with
     | Some s -> let i = Bignum_extended.of_string s in Some i
     | None -> None;;
     
   (*-----booleans------*)
-  let parse_bool_field_exn ~fieldname ~result ~tuple = 
-    let s = extract_field_as_string_exn ~fieldname ~result ~tuple in 
+  let parse_bool_field_exn ~fieldname ~qresult ~tuple = 
+    let s = extract_field_as_string_exn ~fieldname ~qresult ~tuple in 
     parse_boolean_field_exn ~field:s;;
 
-  let parse_optional_bool_field_exn ~fieldname ~result ~tuple =
-    let s_opt = extract_optional_field ~fieldname ~result ~tuple in
+  let parse_optional_bool_field_exn ~fieldname ~qresult ~tuple =
+    let s_opt = extract_optional_field ~fieldname ~qresult ~tuple in
     match s_opt with
     | Some s -> let b = parse_boolean_field_exn ~field:s in Some b
     | None -> None;;
   (*----------------floats--------------*)
-  let parse_float_field_exn ~fieldname ~result ~tuple =
-    let s = extract_field_as_string_exn ~fieldname ~result ~tuple in 
+  let parse_float_field_exn ~fieldname ~qresult ~tuple =
+    let s = extract_field_as_string_exn ~fieldname ~qresult ~tuple in 
     Core.Float.of_string s;;
 
-  let parse_optional_float_field_exn ~fieldname ~result ~tuple =
-    let s_opt = extract_optional_field ~fieldname ~result ~tuple in
+  let parse_optional_float_field_exn ~fieldname ~qresult ~tuple =
+    let s_opt = extract_optional_field ~fieldname ~qresult ~tuple in
     match s_opt with
     | Some s -> let f = Core.Float.of_string s in Some f
     | None -> None;;
   (*----------------date and time--------------*)
-  let parse_date_field_exn ~fieldname ~result ~tuple =
-    let s = extract_field_as_string_exn ~fieldname ~result ~tuple in
+  let parse_date_field_exn ~fieldname ~qresult ~tuple =
+    let s = extract_field_as_string_exn ~fieldname ~qresult ~tuple in
     Core.Date.of_string s;;
 
-  let parse_optional_date_field_exn ~fieldname ~result ~tuple =
-    let s_opt = extract_optional_field ~fieldname ~result ~tuple in
+  let parse_optional_date_field_exn ~fieldname ~qresult ~tuple =
+    let s_opt = extract_optional_field ~fieldname ~qresult ~tuple in
     match s_opt with
     | Some s -> let dt = Core.Date.of_string s in Some dt
     | None -> None;;
 
-  let parse_datetime_field_exn ~fieldname ~result ~tuple =
-    let s = extract_field_as_string_exn ~fieldname ~result ~tuple in
+  let parse_datetime_field_exn ~fieldname ~qresult ~tuple =
+    let s = extract_field_as_string_exn ~fieldname ~qresult ~tuple in
     Core.Time.of_string s;;
 
-  let parse_optional_datetime_field_exn ~fieldname ~result ~tuple =
-    let s_opt = extract_optional_field ~fieldname ~result ~tuple in
+  let parse_optional_datetime_field_exn ~fieldname ~qresult ~tuple =
+    let s_opt = extract_optional_field ~fieldname ~qresult ~tuple in
     match s_opt with
     | Some s -> let dt = Core.Time.of_string s in Some dt
     | None -> None;;
