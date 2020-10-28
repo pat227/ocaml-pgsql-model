@@ -233,30 +233,18 @@ module Model = struct
 	 "          try "] in
     let suffix =
       String.concat 
-	["    let queryresult = exec conn query in\n";
-	 "    let isSuccess = status conn in\n";
-	 "    match isSuccess with\n    | StatusEmpty ->  Core.Result.Ok [] \n";
-	 "    | StatusError _ -> \n";
-	 "       let () = Utilities.print_n_flush (\"Error during query of table ";table_name;"...\") in\n";
-	 "       let () = Utilities.closecon conn in\n";
-	 "       Core.Result.Error \"get_from_db() Error in sql\"\n";
-	 "    | StatusOK -> \n";
-	 "       let () = Utilities.print_n_flush \"Query successful from ";table_name;" table.\" in \n";
-         "       let () = Utilities.closecon conn in\n";
-	 "       helper [] queryresult (fetch queryresult);;\n"] in
-(*    let rec build_a_line_from_a_list_wrap_at_x_columns parts maxwidth length_of_growingline
-						       indentation acc =
-      match parts with
-      | [] -> String.concat ~sep:" " (List.rev acc)
-      | h :: t ->
-	 let newlength = ((String.length h) + length_of_growingline) in
-	 if newlength > maxwidth && ((String.length h) > 2) then
-	   let elem = (Core.String.concat [h;"\n";indentation]) in 
-	   build_a_line_from_a_list_wrap_at_x_columns
-	     t maxwidth (String.length indentation) indentation (elem::acc)
-	 else
-	   build_a_line_from_a_list_wrap_at_x_columns
-	     t maxwidth newlength indentation (h::acc) in *)
+	["    let queryresult = conn#exec query in\n";
+	 "    let isSuccess = queryresult#status in\n";
+	 "    match isSuccess with\n    | Tuples_ok -> \n";
+         "       (match queryresult#ntuples with ";
+         "	| 0 -> (*should actually be impossible*)";
+         "           let () = Utilities.closecon conn in Core.Result.Ok []";
+         "	| _ ->";
+         "           let result = helper Core.String.Map.empty queryresult 0 (queryresult#ntuples) in ";
+         "	   let () = Utilities.closecon conn in ";
+         "           let () = Gc.full_major () in";
+         "	   result";
+         "       )"] in
     let rec for_each_field ~flist ~accum =
       match flist with
       | [] -> String.concat ~sep:"\n" accum
@@ -264,28 +252,6 @@ module Model = struct
 	 let parser_function_call =
 	   Types_we_emit.converter_of_string_of_type
 	     ~is_optional:h.is_nullable ~t:h.data_type ~fieldname:h.col_name in
-	 (*support breaking line at least into 2 parts if too long
-	 let parser_function_call_split_on_spaces =
-	   String.split ~on:' ' parser_function_call in*)
-	 (*let len_so_far_of_line = 12 + (String.length h.col_name) + 7 in
-	 let tabs = len_so_far_of_line / 8 in
-	 let spaces = len_so_far_of_line % 8 in
-	 let indentation = Core.String.concat
-			     [(Core.String.make tabs '\t');(Core.String.make spaces ' ')] in
-	 let output = build_a_line_from_a_list_wrap_at_x_columns
-			parser_function_call_split_on_spaces 110
-			(*These tabs are specific to the parser functions*)
-			len_so_far_of_line indentation [] in *)
-	 (*let output =
-	   if ((String.length (List.hd_exn parser_function_call_split_on_spaces))
-	       + len_so_far_of_line > 90) then
-	     String.concat
-	       ["            let ";h.col_name;" = \n";
-		(List.hd_exn parser_function_call_split_on_spaces);"\n";
-		(List.slice parser_function_call_split_on_spaces 1 0);" in "] else
-	     String.concat
-	       ["            let ";h.col_name;" = \n";
-		parser_function_call;" in "] in *)
 	 for_each_field
 	   ~flist:t
 	   ~accum:((String.concat
@@ -293,20 +259,19 @@ module Model = struct
     let rec make_fields_create_line ~flist ~accum =
       match flist with
       | [] -> let fields = String.concat ~sep:" " accum in
-	 (*let fields_w_newlines =
-	   build_a_line_from_a_list_wrap_at_x_columns accum 120 38 "\t\t\t\t     " accum in*)
 	 String.concat ["            let new_t = Fields.create ";fields;" in "]
       | h :: t ->
 	 let onef = String.concat ["~";h.col_name] in
 	 make_fields_create_line ~flist:t ~accum:(onef::accum) in 
     let creation_line = make_fields_create_line ~flist:fields_list ~accum:[] in
-    let recursive_call = "            helper (new_t :: accum) results (fetch results) " in 
+    let recursive_call = "            helper (new_t :: accum) qresult (tuple_number + 1) count " in 
     let parser_lines = for_each_field ~flist:fields_list ~accum:[] in
-    String.concat ~sep:"\n" [preamble;helper_preamble;parser_lines;creation_line;
-			     recursive_call;"          with\n          | err ->";
-			     "             let () = Utilities.print_n_flush (String.concat [\"\\nError: \";(Exn.to_string err);\"Skipping a record...\"]) in";
-			     "             helper accum results (fetch results)\n";
-			     "      ) in";suffix];;
+    String.concat ~sep:"\n"
+      [preamble;helper_preamble;parser_lines;creation_line;
+       recursive_call;"          with\n          | err ->";
+       "             let () = Utilities.print_n_flush (String.concat [\"\\nError: \";(Exn.to_string err);\"Skipping a record...\"]) in";
+       "             helper accum qresult (tuple_number+1) count \n";
+       "      ) in";suffix];;
 
   (**Construct an otherwise tedious function that creates SQL needed to save 
      records of type t to a db.*)
@@ -346,10 +311,6 @@ module Model = struct
     Core.String.concat ~sep:"\n" ["(*DONT FORGET to create your own Utilities module and to 'include Ocaml_db_model.Utilities' alongside";
                                   "any customized functions you may need*)";
                                   "module Utilities = Utilities.Utilities";
-				  "module Uint64_extended = Ocaml_db_model.Uint64_extended";
-				  "module Uint32_extended = Ocaml_db_model.Uint32_extended";
-				  "module Uint16_extended = Ocaml_db_model.Uint16_extended";
-				  "module Uint8_extended = Ocaml_db_model.Uint8_extended";
 				  "module Date_extended = Ocaml_db_model.Date_extended";
 				  "module Date_time_extended = Ocaml_db_model.Date_time_extended";
 				  "module Bignum_extended = Ocaml_db_model.Bignum_extended";
@@ -359,10 +320,6 @@ module Model = struct
       statement and customized over-ridden versions of the connections establishment functions that require db 
       credentials, plus any additional functions a user may want.*)
     Core.String.concat ~sep:"\n" ["module Utilities = Utilities.Utilities";
-				  "module Uint64_extended = Ocaml_db_model.Uint64_extended";
-				  "module Uint32_extended = Ocaml_db_model.Uint32_extended";
-				  "module Uint16_extended = Ocaml_db_model.Uint16_extended";
-				  "module Uint8_extended = Ocaml_db_model.Uint8_extended";
 				  "module Date_extended = Ocaml_db_model.Date_extended";
 				  "module Date_time_extended = Ocaml_db_model.Date_time_extended";
 				  "module Bignum_extended = Ocaml_db_model.Bignum_extended\n"];;
@@ -396,7 +353,6 @@ module Model = struct
       ~sep:"\n"
       ["  let rec save2db ~records =";
        "    let open Core in ";
-       "    let open Mysql in ";
        "    (*====MANUALLY ALTER MAX PACKET SIZE====";
        "      If we have many records we're limited by smaller of either 1000 records OR ";
        "      the max packet size, which is a configuration setting on the sql server; ";
