@@ -94,7 +94,7 @@ module Model = struct
     | Fatal_error ->
        let s = queryresult#error in 
        let () = Utilities.print_n_flush (Core.String.concat ["model::get_fields_for_given_table() \
-			                                      Query of past scan requests failed. Sql error? %s \n";s]) in
+			                                      Query of failed. Sql error? Error:";s]) in
        let () = Gc.full_major () in
        let () = Utilities.closecon conn in Core.Result.Ok String.Map.empty
     (*raise (Assert_failure ("model::get_fields_for_given_table()",98,0))*)
@@ -240,11 +240,23 @@ module Model = struct
          "	| 0 -> (*should actually be impossible*)";
          "           let () = Utilities.closecon conn in Core.Result.Ok []";
          "	| _ ->";
-         "           let result = helper Core.String.Map.empty queryresult 0 (queryresult#ntuples) in ";
+         "           let result = helper [] queryresult 0 (queryresult#ntuples) in ";
          "	   let () = Utilities.closecon conn in ";
          "           let () = Gc.full_major () in";
          "	   result";
-         "       )"] in
+         "       )\n";
+         "    | Bad_response\n    | Nonfatal_error\n    |Fatal_error -> ";
+         "       let s = queryresult#error in ";
+         "       let () = Utilities.print_n_flush (Core.String.concat [\"model::get_fields_for_given_table() Query failed. Sql error? Error:\"s] in ";
+         "       let () = Gc.full_major () in ";
+         "       let () = Utilities.closecon conn in Core.Result.Ok String.Map.empty";
+         "    | Empty_query\n    | Copy_out\n    | Copy_in\n    | Copy_both\n    | Command_ok ->";
+         "       (* let () = print_n_flush (Core.String.concat [\"Unexpected branch.\n\"]) in *)";
+         "       let () = Gc.full_major () in " ;
+         "       let () = Utilities.closecon conn in " ;
+         "       Core.Result.Error \"Unuexpected COMMAND OK returned.\"";
+         "       (*raise (Failure \"model::get_fields_for_given_table() Unexpected return code from db.\") *)";
+        ] in
     let rec for_each_field ~flist ~accum =
       match flist with
       | [] -> String.concat ~sep:"\n" accum
@@ -269,7 +281,7 @@ module Model = struct
     String.concat ~sep:"\n"
       [preamble;helper_preamble;parser_lines;creation_line;
        recursive_call;"          with\n          | err ->";
-       "             let () = Utilities.print_n_flush (String.concat [\"\\nError: \";(Exn.to_string err);\"Skipping a record...\"]) in";
+       "             let () = Utilities.print_n_flush (String.concat [\"\\nError: \";(Exn.to_string err);\"Skipping a record from table:";table_name;"...\"]) in";
        "             helper accum qresult (tuple_number+1) count \n";
        "      ) in";suffix];;
 
@@ -311,18 +323,18 @@ module Model = struct
     Core.String.concat ~sep:"\n" ["(*DONT FORGET to create your own Utilities module and to 'include Ocaml_db_model.Utilities' alongside";
                                   "any customized functions you may need*)";
                                   "module Utilities = Utilities.Utilities";
-				  "module Date_extended = Ocaml_db_model.Date_extended";
-				  "module Date_time_extended = Ocaml_db_model.Date_time_extended";
-				  "module Bignum_extended = Ocaml_db_model.Bignum_extended";
+				  "module Date_extended = Ocaml_psql_model.Date_extended";
+				  "module Date_time_extended = Ocaml_psql_model.Date_time_extended";
+				  "module Bignum_extended = Ocaml_psql_model.Bignum_extended";
 				  "open Sexplib.Std\n"];;
     let list_other_modules_for_mli () =
     (*Refer to this project's implementation where possible; utilities MUST be locally provided using an include 
       statement and customized over-ridden versions of the connections establishment functions that require db 
       credentials, plus any additional functions a user may want.*)
     Core.String.concat ~sep:"\n" ["module Utilities = Utilities.Utilities";
-				  "module Date_extended = Ocaml_db_model.Date_extended";
-				  "module Date_time_extended = Ocaml_db_model.Date_time_extended";
-				  "module Bignum_extended = Ocaml_db_model.Bignum_extended\n"];;
+				  "module Date_extended = Ocaml_psql_model.Date_extended";
+				  "module Date_time_extended = Ocaml_psql_model.Date_time_extended";
+				  "module Bignum_extended = Ocaml_psql_model.Bignum_extended\n"];;
   let duplicate_clause_function ~fields () =
     let rec find_primary_key_field_name fs =
       match fs with
@@ -354,10 +366,10 @@ module Model = struct
       ["  let rec save2db ~records =";
        "    let open Core in ";
        "    (*====MANUALLY ALTER MAX PACKET SIZE====";
-       "      If we have many records we're limited by smaller of either 1000 records OR ";
-       "      the max packet size, which is a configuration setting on the sql server; ";
+       "      If we have many records we can limit ourselves, if we choose, to smaller ";
+       "      of either 1000 records OR the max packet size;";
        "      here we hard code the max packet size and consume just enough records to ";
-       "      stay just under the limit and repeat until all have been saved.*)";
+       "      stay under a limit and repeat until all have been saved.*)";
        "    let insert_statement_start = get_sql_insert_statement () in";
        "    let overhead = Core.String.length insert_statement_start in";
        "    let max_packet_size = ((1024 * 1024 * 16) - overhead) in";
@@ -391,16 +403,14 @@ module Model = struct
        "      let insert_statement = String.concat [insert_statement_start;values;on_update_clause] in ";
        "      (*Print to inspect the sql:";
        "      let thecommand =";
-       "        String.concat [\"START TRANSACTION;\"(*;prefix*);insert_statement;\"COMMIT;\"] in";
+       "        String.concat [\"BEGIN;\"(*;prefix*);insert_statement;\"COMMIT;\"] in";
        "      let () = Utilities.print_n_flush (String.concat [\"\\n\";thecommand]) in*)";
-       "      let _result = exec conn \"START TRANSACTION;\" in";
-       "      (*let _ = exec conn prefix in*)";
-       "      let _result2 = exec conn insert_statement in";
-       "      let _result3 = exec conn \"COMMIT;\" in";
-       "      let isSuccess = status conn in";
-       "      match isSuccess with";
-       "      | StatusOK ->";
-       "         let i64opt = (Int64.to_int (affected conn)) in";
+       "      let result = conn#exec thecommand in";
+       "      let status = result#status in";
+       "      match status with";
+       "      | Command_ok ->";
+       "         let () = Gc.full_major () in ";
+       "         >>>>TODO>>>><<<<<< let i64opt = (Int64.to_int (affected conn)) in";
        "         (match i64opt with";
        "          | Some _affected ->";
        "             (*Returns a zero even if successful and inserts > 0 records...not ";
@@ -422,13 +432,13 @@ module Model = struct
        "	     let () = Utilities.closecon conn in";
        "             Core.Result.Error (String.concat [\"\\nNone affected; failed to insert \\ ";
        "				           new records in \";tablename])";
-       "         )"; 
-       "      | StatusEmpty";
-       "      | StatusError _ ->";
+       "         )";
+       "      | _ ->";
        "         let () = Utilities.print_n_flush";
        "	            (String.concat [\"\\nEmpty result; failed to insert \\ ";
        "				     new records into \";tablename]) in";
-       "         let () = Utilities.closecon conn in";
+       "         let () = Gc.full_major () in ";
+       "         let () = closecon conn in";
        "         Core.Result.Error";
        "	   (String.concat [\"\\nEmpty result; failed to insert new \\ ";
        "	  	           records into \";tablename])";
