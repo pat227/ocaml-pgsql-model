@@ -16,17 +16,15 @@ module Command = struct
    *)
 
   let execute regexp_opt table_list_opt ppx_list_opt fields2ignore comparable_modules
-	      allcomparable host user password database destination () =
+	      allcomparable host user password database schema destination () =
     try
-      (*--TODO--do not invoke getcon here, and stop passing it around*)
-      let conn = Utilities.getcon ~host ~user ~password ~dbname:database in
       let fields_map =
 	Model.get_fields_map_for_all_tables
-	  ~regexp_opt ~table_list_opt ~conn ~schema:database in
+	  ~regexp_opt ~table_list_opt ~host ~user ~password ~database ~schema in
       let keys = Core.Map.keys fields_map in 
       let rec helper klist map =
 	match klist with
-	| [] -> ()
+	| [] -> Utilities.print_n_flush "finished...\n"
 	| h::t ->
 	   let ppx_decorators =
 	     match ppx_list_opt with
@@ -48,20 +46,20 @@ module Command = struct
 	   let () = Utilities.print_n_flush ("\nWrote ml and mli for table:" ^ h) in
 	   helper t map in
       helper keys fields_map
-      
     with
     | Failure s -> Utilities.print_n_flush s
 
   let main_command =
-    let usage_msg = "Connect to a mysql db, get schema, write modules and \
+    let usage_msg = "Connect to a postgresql db, get schema, write modules and \
 		     (mostly primitive) types out of thin air with ppx extensions and a \
-		     utility module for parsing mysql strings. Output modules will reside \
+		     utility module for parsing sql strings. Output modules will reside \
                      within whatever destination directory you specify. \
 		     Use basic regexp, or a list, to filter table names." in 
     let host = ref "" in
     let user = ref "" in
     let password = ref "" in
     let database = ref "" in
+    let schema = ref "" in 
     let destination = ref "" in 
     let table_regexp = ref "" in
     let table_list = ref "" in
@@ -73,6 +71,7 @@ module Command = struct
 		   ("-user",Arg.Set_string user,"Required DB username");
 		   ("-password",Arg.Set_string password,"Required DB user password");
 		   ("-db",Arg.Set_string database,"Required DB name");
+                   ("-schema",Arg.Set_string schema,"Required schema");
 		   ("-destination", Arg.Set_string destination, "Required directory into which generated Ocaml will be placed.");
 		   ("-table-regexp",Arg.Set_string table_regexp,
 		    "Optional Regular expression to be used to select only some \
@@ -140,6 +139,6 @@ module Command = struct
 	   (Core.String.split !tables2makecomparable ~on:';')
 	 else 
 	   [!tables2makecomparable] in
-    execute regexp_opt table_list_opt ppx_list_opt fields2ignore_opt comparable_modules !allcomparable !host !user !password !database !destination ()
+    execute regexp_opt table_list_opt ppx_list_opt fields2ignore_opt comparable_modules !allcomparable !host !user !password !database !schema !destination ()
 
 end

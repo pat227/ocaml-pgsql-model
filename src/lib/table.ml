@@ -4,7 +4,7 @@ module Table = struct
     tablename : string;
   } [@@deriving fields]
    
-  let get_tables ?conn () =
+  let get_tables ~host ~user ~password ~database (*~schema*) =
     let open Core in
     let table_query =
       Core.String.concat
@@ -12,22 +12,23 @@ module Table = struct
           FROM pg_tables \
           WHERE schemaname NOT IN ('pg_catalog','information_schema')"] in
     let rec table_helper accum results tupleindex count =
-      if (tupleindex + 1 ) >= count then
+      if tupleindex > count then
         Core.Result.Ok accum
       else
         try
 	  (let tablename =
 	     Utilities.extract_field_as_string_exn
-	       ~fieldname:"table_name" ~qresult:results ~tuple:tupleindex in 
+	       ~fieldname:"tablename" ~qresult:results ~tuple:tupleindex in
+           let () = Utilities.print_n_flush (Core.String.concat ["\nFound table: ";tablename]) in
 	   let new_table_t =
 	     Fields.create ~tablename in
 	   table_helper (new_table_t::accum) results (tupleindex+1) count
 	  )
 	with err ->
-	  let () = Utilities.print_n_flush ("\nError " ^ (Exn.to_string err) ^
+	  let () = Utilities.print_n_flush ("\ntable.ml::Error " ^ (Exn.to_string err) ^
 				              " getting tables from db.") in
-	  Core.Result.Error "table.ml::get_tables() line 46" in
-    let conn = (fun c -> if is_none c then Utilities.getcon_defaults () else Option.value_exn c) conn in 
+	  Core.Result.Error "table.ml::get_tables() line 30" in
+    let conn = Utilities.getcon ~host ~user ~password ~dbname:database in 
     let queryresult = conn#exec table_query in
     let isSuccess = queryresult#status in
     match isSuccess with
@@ -62,7 +63,7 @@ module Table = struct
 	  Unexpected branch. Error line 106.\n"]) in *)
        let () = Gc.full_major () in
        let () = Utilities.closecon conn in
-       Core.Result.Error "table::get_tables() unuexpected COMMAND OK returned."
+       Core.Result.Error "table::get_tables() unuexpected retur value."
     (*raise (Failure "model::get_fields_for_given_table() \
       Unexpected return code from db.") *)
 end

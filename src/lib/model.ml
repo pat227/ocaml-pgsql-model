@@ -12,7 +12,7 @@ module Model = struct
     is_primary_key : bool;
   } [@@deriving show, fields]
 
-  let get_fields_for_given_table ?conn ~schema ~table_name =
+  let get_fields_for_given_table ~host ~user ~password ~database ~schema ~table_name =
     let open Core in 
     (*partly taken from https://stackoverflow.com/questions/18516931/find-primary-key-of-table-in-postgresql-from-information-schema-with-only-select
       and Taken from http://wiki.postgresql.org/wiki/Retrieve_primary_key_columns.   Primary keys are denoted as *_pkey in the T.index_name field of this query.*)
@@ -33,12 +33,10 @@ module Model = struct
            T.table_name=";schema;".information_schema.columns.table_name \
            AND T.column_name=";schema;".information_schema.columns.column_name \
            WHERE ";schema;".information_schema.columns.table_name='";table_name;"';"] in
-    let conn = (fun c -> if is_none c then
-			   Utilities.getcon_defaults ()
-			 else
-			   Option.value_exn c) conn in 
+    let () = Utilities.print_n_flush fields_query in 
+    let conn = Utilities.getcon ~host ~user ~password ~dbname:database in
     let rec helper accum qresult tuple_number tuple_count =
-      if (tuple_number + 1) >= tuple_count then
+      if tuple_number > tuple_count then
         Core.Result.Ok accum
       else 
 	try
@@ -67,14 +65,15 @@ module Model = struct
 	       ~data_type:type_for_module
 	       ~is_nullable
 	       ~is_primary_key in
+           let () = Utilities.print_n_flush (Core.String.concat ["model.ml::get_fields_for_given_table() Field record:";show new_field_record]) in
 	   let newmap = Core.String.Map.add_multi accum ~key:table_name ~data:new_field_record in
            helper newmap qresult (tuple_number+1) tuple_count
 	  )
 	  with err ->
 	    let () = Utilities.print_n_flush
-		       (String.concat ["\nModel::get_fields_for_given_table() Error ";(Exn.to_string err);
+		       (String.concat ["\nmodel.ml::get_fields_for_given_table() Error ";(Exn.to_string err);
 				       " getting tables from db."]) in
-	    Core.Result.Error "Model::get_fields_for_given_table() Failed to get tables from db." in
+	    Core.Result.Error "model.ml::get_fields_for_given_table() Failed to get tables from db." in
     let queryresult = conn#exec fields_query in
     let isSuccess = queryresult#status in
     match isSuccess with
@@ -82,8 +81,10 @@ module Model = struct
       | Single_tuple ->
        (match queryresult#ntuples with
 	| 0 -> (*should actually be impossible*)
+           let () = Utilities.print_n_flush (Core.String.concat ["model.ml::get_fields_for_given_table() got empty result..."]) in
            let () = Utilities.closecon conn in Core.Result.Ok Core.String.Map.empty
 	| _ ->
+           let () = Utilities.print_n_flush (Core.String.concat ["model.ml::get_fields_for_given_table() got non-empty result..."]) in
            let map_result = helper Core.String.Map.empty queryresult 0 (queryresult#ntuples) in
 	   let () = Utilities.closecon conn in
            let () = Gc.full_major () in
@@ -93,7 +94,7 @@ module Model = struct
     | Nonfatal_error 
     | Fatal_error ->
        let s = queryresult#error in 
-       let () = Utilities.print_n_flush (Core.String.concat ["model::get_fields_for_given_table() \
+       let () = Utilities.print_n_flush (Core.String.concat ["model.ml::get_fields_for_given_table() \
 			                                      Query of failed. Sql error? Error:";s]) in
        let () = Gc.full_major () in
        let () = Utilities.closecon conn in Core.Result.Ok String.Map.empty
@@ -104,11 +105,9 @@ module Model = struct
       | Copy_in 
       | Copy_both 
       | Command_ok -> 
-       (* let () = print_n_flush (Core.String.concat ["model::get_fields_for_given_table() \
-	  Unexpected branch. Error line 106.\n"]) in *)
        let () = Gc.full_major () in
        let () = Utilities.closecon conn in
-       Core.Result.Error "model::get_fields_for_given_table() unuexpected COMMAND OK returned."
+       Core.Result.Error "model.ml::get_fields_for_given_table() unuexpected return value."
     (*raise (Failure "model::get_fields_for_given_table() \
       Unexpected return code from db.") *)
                      
@@ -146,17 +145,17 @@ module Model = struct
     with
     | _ -> None;;
     
-  let get_fields_map_for_all_tables ~regexp_opt ~table_list_opt ~conn ~schema =
+  let get_fields_map_for_all_tables ~regexp_opt ~table_list_opt ~host ~user ~password ~database ~schema =
     let open Core in
-    let open Core.Result in 
-    let table_list_result = Table.get_tables ~conn () in
+    let open Core.Result in
+    let table_list_result = Table.get_tables ~host ~user ~password ~database (*~schema*) in
     if is_ok table_list_result then
       let tables = ok_or_failwith table_list_result in
       let regexp_opt = make_regexp regexp_opt in
       let table_list_opt = parse_list table_list_opt in 
       let rec helper ltables map =
 	let update_map ~table_name =
-	  let fs_result = get_fields_for_given_table ~conn ~table_name ~schema in
+	  let fs_result = get_fields_for_given_table ~host ~user ~password ~database ~table_name ~schema in
 	  if is_ok fs_result then
 	    let newmap = ok_or_failwith fs_result in
 	    let combinedmaps =
@@ -173,7 +172,7 @@ module Model = struct
 	  else  
 	    map in 
 	match ltables with
-	| [] -> map
+	| [] -> let () = Utilities.print_n_flush "get_fields_map_for_all_tables is done..." in map
 	| h::t ->
 	   (**---filter on regexp or list here, if present at all---*)
 	   (match regexp_opt, table_list_opt with
@@ -228,7 +227,7 @@ module Model = struct
     let helper_preamble =
       Core.String.concat
 	["    let rec helper accum qresult tuple_number count = \n";
-	 "      if (tuple_number + 1) >= tuple_count then \n";
+	 "      if tuple_number > tuple_count then \n";
 	 "        Core.Result.Ok accum \n       else\n";
 	 "          try "] in
     let suffix =
