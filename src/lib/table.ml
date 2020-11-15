@@ -12,7 +12,7 @@ module Table = struct
           FROM pg_tables \
           WHERE schemaname NOT IN ('pg_catalog','information_schema')"] in
     let rec table_helper accum results tupleindex count =
-      if tupleindex > count then
+      if tupleindex >= count then
         Core.Result.Ok accum
       else
         try

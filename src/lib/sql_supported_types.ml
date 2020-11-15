@@ -52,7 +52,7 @@ module Sql_supported_types = struct
   (*Given the data_type and column_type fields from info schema, determine if the data
     type is supported or not, and if so which type; the data_type field is very easy to 
     match on. NOTE that unsigned data types DO NOT EXIST in postgresql, unlike mysql. *)
-  let of_col_type_and_flags ~data_type ~col_type ~col_name =
+  let of_col_type_and_flags ~data_type ~col_name =
     let open Core in 
     let the_col_type ~data_type =
       match data_type with
@@ -72,12 +72,12 @@ module Sql_supported_types = struct
       | "time" -> TIMESTAMP
       | "timestamp" -> TIMESTAMP
       | "character varying" -> VARCHAR
-      | _ -> let () = Utilities.print_n_flush (String.concat [col_name;" with type ";col_type;" is not supported."])
+      | _ -> let () = Utilities.print_n_flush (String.concat [col_name;" with type ";data_type;" is not supported."])
 	     in UNSUPPORTED in
     the_col_type ~data_type;;
 
-  let one_step ~data_type ~col_type ~col_name =
-    let supported_t = of_col_type_and_flags ~data_type ~col_type ~col_name in
+  let one_step ~data_type ~col_name =
+    let supported_t = of_col_type_and_flags ~data_type ~col_name in
     let name_result = ml_type_of_supported_sql_type supported_t in
     if is_ok name_result then
       (fun x -> match x with

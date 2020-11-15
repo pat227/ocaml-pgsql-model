@@ -36,7 +36,7 @@ module Model = struct
     let () = Utilities.print_n_flush fields_query in 
     let conn = Utilities.getcon ~host ~user ~password ~dbname:database in
     let rec helper accum qresult tuple_number tuple_count =
-      if tuple_number > tuple_count then
+      if tuple_number >= tuple_count then
         Core.Result.Ok accum
       else 
 	try
@@ -46,9 +46,6 @@ module Model = struct
 	   let data_type =
 	     Utilities.extract_field_as_string_exn
 	       ~fieldname:"data_type" ~qresult ~tuple:tuple_number in 
-	   let col_type =
-	     Utilities.extract_field_as_string_exn
-	       ~fieldname:"column_type" ~qresult ~tuple:tuple_number in 
 	   let is_nullable =
 	     Utilities.parse_bool_field_exn
 	       ~fieldname:"is_nullable" ~qresult ~tuple:tuple_number in 
@@ -57,7 +54,7 @@ module Model = struct
 			    ~fieldname:"index_name" ~qresult ~tuple:tuple_number in 
 	     Core.String.is_substring is_pri ~substring:"_pkey" in
 	   let type_for_module =
-	     Sql_supported_types.one_step ~data_type ~col_type ~col_name in
+	     Sql_supported_types.one_step ~data_type ~col_name in
 	   let new_field_record =
 	     Fields.create
 	       ~col_name
@@ -227,7 +224,7 @@ module Model = struct
     let helper_preamble =
       Core.String.concat
 	["    let rec helper accum qresult tuple_number count = \n";
-	 "      if tuple_number > tuple_count then \n";
+	 "      if tuple_number >= tuple_count then \n";
 	 "        Core.Result.Ok accum \n       else\n";
 	 "          try "] in
     let suffix =
@@ -235,26 +232,26 @@ module Model = struct
 	["    let queryresult = conn#exec query in\n";
 	 "    let isSuccess = queryresult#status in\n";
 	 "    match isSuccess with\n    | Tuples_ok -> \n";
-         "       (match queryresult#ntuples with ";
-         "	| 0 -> (*should actually be impossible*)";
-         "           let () = Utilities.closecon conn in Core.Result.Ok []";
-         "	| _ ->";
-         "           let result = helper [] queryresult 0 (queryresult#ntuples) in ";
-         "	   let () = Utilities.closecon conn in ";
-         "           let () = Gc.full_major () in";
-         "	   result";
+         "       (match queryresult#ntuples with \n";
+         "	| 0 -> (*should actually be impossible*)\n";
+         "           let () = Utilities.closecon conn in Core.Result.Ok []\n";
+         "	| _ ->\n";
+         "           let result = helper [] queryresult 0 (queryresult#ntuples) in \n";
+         "	   let () = Utilities.closecon conn in \n";
+         "           let () = Gc.full_major () in \n";
+         "	   result\n";
          "       )\n";
-         "    | Bad_response\n    | Nonfatal_error\n    |Fatal_error -> ";
-         "       let s = queryresult#error in ";
-         "       let () = Utilities.print_n_flush (Core.String.concat [\"model::get_fields_for_given_table() Query failed. Sql error? Error:\"s] in ";
-         "       let () = Gc.full_major () in ";
-         "       let () = Utilities.closecon conn in Core.Result.Ok String.Map.empty";
-         "    | Empty_query\n    | Copy_out\n    | Copy_in\n    | Copy_both\n    | Command_ok ->";
-         "       (* let () = print_n_flush (Core.String.concat [\"Unexpected branch.\n\"]) in *)";
-         "       let () = Gc.full_major () in " ;
-         "       let () = Utilities.closecon conn in " ;
-         "       Core.Result.Error \"Unuexpected COMMAND OK returned.\"";
-         "       (*raise (Failure \"model::get_fields_for_given_table() Unexpected return code from db.\") *)";
+         "    | Bad_response\n    | Nonfatal_error\n    | Fatal_error -> \n";
+         "       let s = queryresult#error in \n";
+         "       let () = Utilities.print_n_flush (Core.String.concat [\"model::get_fields_for_given_table() Query failed. Sql error? Error:\";s] in \n";
+         "       let () = Gc.full_major () in \n";
+         "       let () = Utilities.closecon conn in Core.Result.Ok String.Map.empty \n";
+         "    | Empty_query\n    | Copy_out\n    | Copy_in\n    | Copy_both\n    | Command_ok -> \n";
+         "       (* let () = print_n_flush (Core.String.concat [\"Unexpected branch.\"]) in *)\n";
+         "       let () = Gc.full_major () in \n" ;
+         "       let () = Utilities.closecon conn in \n" ;
+         "       Core.Result.Error \"Unuexpected COMMAND OK returned.\"\n";
+         "       (*raise (Failure \"model::get_fields_for_given_table() Unexpected return code from db.\") *)\n";
         ] in
     let rec for_each_field ~flist ~accum =
       match flist with
@@ -277,10 +274,10 @@ module Model = struct
     let creation_line = make_fields_create_line ~flist:fields_list ~accum:[] in
     let recursive_call = "            helper (new_t :: accum) qresult (tuple_number + 1) count " in 
     let parser_lines = for_each_field ~flist:fields_list ~accum:[] in
-    String.concat ~sep:"\n"
-      [preamble;helper_preamble;parser_lines;creation_line;
-       recursive_call;"          with\n          | err ->";
-       "             let () = Utilities.print_n_flush (String.concat [\"\\nError: \";(Exn.to_string err);\"Skipping a record from table:";table_name;"...\"]) in";
+    Core.String.concat
+      [preamble;"\n";helper_preamble;"\n";parser_lines;"\n";creation_line;"\n";
+       recursive_call;"\n          with\n          | err ->\n";
+       "             let () = Utilities.print_n_flush (String.concat [\"\\nError: \";(Exn.to_string err);\"Skipping a record from table:";table_name;"...\"]) in\n";
        "             helper accum qresult (tuple_number+1) count \n";
        "      ) in";suffix];;
 
@@ -409,7 +406,7 @@ module Model = struct
        "      match status with";
        "      | Command_ok ->";
        "         let () = Gc.full_major () in ";
-       "         >>>>TODO>>>><<<<<< let i64opt = (Int64.to_int (affected conn)) in";
+       "         (*>>>>TODO>>>><<<<<< let i64opt = (Int64.to_int (affected conn)) in";
        "         (match i64opt with";
        "          | Some _affected ->";
        "             (*Returns a zero even if successful and inserts > 0 records...not ";
@@ -431,7 +428,7 @@ module Model = struct
        "	     let () = Utilities.closecon conn in";
        "             Core.Result.Error (String.concat [\"\\nNone affected; failed to insert \\ ";
        "				           new records in \";tablename])";
-       "         )";
+       "         ) *)";
        "      | _ ->";
        "         let () = Utilities.print_n_flush";
        "	            (String.concat [\"\\nEmpty result; failed to insert \\ ";
@@ -584,8 +581,7 @@ module Model = struct
 	["  let get_sql_insert_statement () =\n";
 	 "    let fs = Fields.names in\n";
 	 "    let csv_fields = Core.String.concat fs ~sep:\",\" in\n";
-	 "    Core.String.concat [\"INSERT INTO \";tablename;\" (\";\n";
-	 "                        csv_fields;\") VALUES \"];;\n";
+	 "    Core.String.concat [\"INSERT INTO \";tablename;\" (\";csv_fields;\") VALUES \"];;\n";
 	] in
     let generate_values_of_list =
       String.concat
