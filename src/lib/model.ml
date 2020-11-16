@@ -64,7 +64,7 @@ module Model = struct
 	       ~is_primary_key in
            let () = Utilities.print_n_flush (Core.String.concat ["model.ml::get_fields_for_given_table() Field record:";show new_field_record]) in
 	   let newmap = Core.String.Map.add_multi accum ~key:table_name ~data:new_field_record in
-           helper newmap qresult (tuple_number+1) tuple_count
+           helper newmap qresult (tuple_number + 1) tuple_count
 	  )
 	  with err ->
 	    let () = Utilities.print_n_flush
@@ -243,7 +243,7 @@ module Model = struct
          "       )\n";
          "    | Bad_response\n    | Nonfatal_error\n    | Fatal_error -> \n";
          "       let s = queryresult#error in \n";
-         "       let () = Utilities.print_n_flush (Core.String.concat [\"model::get_fields_for_given_table() Query failed. Sql error? Error:\";s] in \n";
+         "       let () = Utilities.print_n_flush (Core.String.concat [\"model::get_fields_for_given_table() Query failed. Sql error? Error:\";s]) in \n";
          "       let () = Gc.full_major () in \n";
          "       let () = Utilities.closecon conn in Core.Result.Ok String.Map.empty \n";
          "    | Empty_query\n    | Copy_out\n    | Copy_in\n    | Copy_both\n    | Command_ok -> \n";
@@ -272,14 +272,14 @@ module Model = struct
 	 let onef = String.concat ["~";h.col_name] in
 	 make_fields_create_line ~flist:t ~accum:(onef::accum) in 
     let creation_line = make_fields_create_line ~flist:fields_list ~accum:[] in
-    let recursive_call = "            helper (new_t :: accum) qresult (tuple_number + 1) count " in 
+    let recursive_call = "            helper (new_t :: accum) qresult (tuple_number + 1) count \n" in 
     let parser_lines = for_each_field ~flist:fields_list ~accum:[] in
     Core.String.concat
       [preamble;"\n";helper_preamble;"\n";parser_lines;"\n";creation_line;"\n";
-       recursive_call;"\n          with\n          | err ->\n";
-       "             let () = Utilities.print_n_flush (String.concat [\"\\nError: \";(Exn.to_string err);\"Skipping a record from table:";table_name;"...\"]) in\n";
-       "             helper accum qresult (tuple_number+1) count \n";
-       "      ) in";suffix];;
+       recursive_call;"          with\n          | err ->\n";
+       "            let () = Utilities.print_n_flush (String.concat [\"\\nError: \";(Exn.to_string err);\"Skipping a record from table:";table_name;"...\"]) in\n";
+       "            helper accum qresult (tuple_number + 1) count in\n";
+       "        ";suffix];;
 
   (**Construct an otherwise tedious function that creates SQL needed to save 
      records of type t to a db.*)
@@ -414,14 +414,14 @@ module Model = struct
        "  	   let () = Utilities.print_n_flush";
        "             (Core.String.concat [\"\\nSuccessfully inserted new records into \";";
        "  		                  tablename]) in ";
-       "             let () = Utilities.closecon conn in";
+       "             let () = Utilities.closecon conn in *)";
        "             (match last_index with";
        "              | None -> Core.Result.Ok ()";
        "              | Some i ->";
        "                 let balance_of_records = Core.List.sub records ~pos:i ~len:(count-i) in";
        "                 save2db ~records:balance_of_records";
        "	     )";
-       "	  | None ->";
+       "	  (*| None ->";
        "             let () = Utilities.print_n_flush";
        "	                (String.concat [\"\\nNone affected; failed to insert new \\ ";
        "                                        records in \";tablename]) in";
