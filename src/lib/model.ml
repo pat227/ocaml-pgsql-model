@@ -662,8 +662,8 @@ module Model = struct
 	 "  val get_sql_insert_statement : unit -> string";
 	 "  val get_sql_insert_on_duplicate_clause : unit -> string";
 	 "  val get_from_db : query:string -> (t list, string) Core.Result.t";
-	 "  val generateSQLvalue_for_insert : t -> Mysql.dbd -> string";
-	 "  val generate_values_for_sql_of_list : records:t list -> conn:Mysql.dbd -> Core.String.t";
+	 "  val generateSQLvalue_for_insert : t -> Postgresql.connection -> string";
+	 "  val generate_values_for_sql_of_list : records:t list -> conn:Postgresql.connection -> Core.String.t";
 	 "  val save2db : records: t list -> (unit, string) Core.Result.t";
 	 "end"] in
     if (allcomparable || (Core.List.mem comparable_modules ~equal:Core.String.equal table_name)) then 

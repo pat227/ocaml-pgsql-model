@@ -1,6 +1,6 @@
-module Utilities = Ocaml_psql_model.Utilities
-module Model = Ocaml_psql_model.Model
-module Sql_supported_types = Ocaml_psql_model.Sql_supported_types
+module Utilities = Ocaml_pgsql_model.Utilities
+module Model = Ocaml_pgsql_model.Model
+module Sql_supported_types = Ocaml_pgsql_model.Sql_supported_types
 module Command = struct
 (*===TODO===
       1) Extend string type to be length aware and avoid truncation with mysql varchar and text field limits 
