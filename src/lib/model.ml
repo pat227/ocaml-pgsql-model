@@ -220,13 +220,13 @@ module Model = struct
       String.concat ["  let get_from_db ~query =\n";
 		     "    let open Core in \n";
 		     "    let conn = Utilities.getcon ~host:\"";host;"\" ~user:\"";user;"\" \n";
-		     "                               ~password:\"";password;"\" ~dbname:\"";database;"\" in"] in
+		     "                 ~password:\"";password;"\" ~dbname:\"";database;"\" in"] in
     let helper_preamble =
       Core.String.concat
 	["    let rec helper accum qresult tuple_number count = \n";
 	 "      if tuple_number >= tuple_count then \n";
-	 "        Core.Result.Ok accum \n       else\n";
-	 "          try "] in
+	 "        Core.Result.Ok accum \n      else\n";
+	 "        try "] in
     let suffix =
       String.concat 
 	["    let queryresult = conn#exec query in\n";
@@ -263,7 +263,7 @@ module Model = struct
 	 for_each_field
 	   ~flist:t
 	   ~accum:((String.concat
-		      ["            let ";h.col_name;" = \n              ";parser_function_call;" in "])::accum) in
+		      ["          let ";h.col_name;" = \n           ";parser_function_call;" in "])::accum) in
     let rec make_fields_create_line ~flist ~accum =
       match flist with
       | [] -> let fields = String.concat ~sep:" " accum in
@@ -272,13 +272,13 @@ module Model = struct
 	 let onef = String.concat ["~";h.col_name] in
 	 make_fields_create_line ~flist:t ~accum:(onef::accum) in 
     let creation_line = make_fields_create_line ~flist:fields_list ~accum:[] in
-    let recursive_call = "            helper (new_t :: accum) qresult (tuple_number + 1) count \n" in 
+    let recursive_call = "         helper (new_t :: accum) qresult (tuple_number + 1) count \n" in 
     let parser_lines = for_each_field ~flist:fields_list ~accum:[] in
     Core.String.concat
       [preamble;"\n";helper_preamble;"\n";parser_lines;"\n";creation_line;"\n";
-       recursive_call;"          with\n          | err ->\n";
-       "            let () = Utilities.print_n_flush (String.concat [\"\\nError: \";(Exn.to_string err);\"Skipping a record from table:";table_name;"...\"]) in\n";
-       "            helper accum qresult (tuple_number + 1) count in\n";
+       recursive_call;"        with\n        | err ->\n";
+       "           let () = Utilities.print_n_flush (String.concat [\"\\nError: \";(Exn.to_string err);\"Skipping a record from table:";table_name;"...\"]) in\n";
+       "           helper accum qresult (tuple_number + 1) count in\n";
        "        ";suffix];;
 
   (**Construct an otherwise tedious function that creates SQL needed to save 
