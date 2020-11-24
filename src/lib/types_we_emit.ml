@@ -73,7 +73,7 @@ module Types_we_emit = struct
       false, String ->
       String.concat ["(conv (fun x -> \"'\" ^ (Mysql.real_escape conn x) ^ \"'\"))"]
     | true, String ->
-       String.concat ["(conv (fun x -> Utilities.serialize_optional_field ~field:x))"]
+       String.concat ["(conv (fun x -> Utilities.serialize_optional_field ~field:x ~conn))"]
     | false, Bool ->
        String.concat ["(conv (fun x -> if x then \"TRUE\" else \"FALSE\"))"]
     | true, Bool ->
