@@ -16,8 +16,8 @@ module Types_we_emit = struct
     if is_nullable then
       match t with
       | Bignum -> "Bignum_extended.t option"
-      | CoreInt64 -> "Core.Int64.t option"
-      | CoreInt32 -> "Core.Int32.t option"
+      | CoreInt64 -> "CoreInt64_extended.t option"
+      | CoreInt32 -> "CoreInt32_extended.t option"
       | Float -> "Core.Float.t option"
       | Date -> "Date_extended.t option"
       | Time -> "Date_time_extended.t option"
@@ -26,8 +26,8 @@ module Types_we_emit = struct
     else 
       match t with
       | Bignum -> "Bignum_extended.t"
-      | CoreInt64 -> "Core.Int64.t"
-      | CoreInt32 -> "Core.Int32.t"
+      | CoreInt64 -> "CoreInt64_extended.t"
+      | CoreInt32 -> "CoreInt32_extended.t"
       | Float -> "Core.Float.t"
       | Date -> "Date_extended.t"
       | Time -> "Date_time_extended.t"
@@ -41,45 +41,43 @@ module Types_we_emit = struct
     let open Core in 
     match is_optional, t with
       false, String ->
-      String.concat ["Utilities.extract_field_as_string_exn ~fieldname:\"";fieldname;"\" ~qresult"]
+      String.concat ["Utilities.extract_field_as_string_exn ~fieldname:\"";fieldname;"\" ~qresult ~tuple:tuple_number"]
     | true, String ->
-       String.concat ["Utilities.extract_optional_field ~fieldname:\"";fieldname;"\" ~qresult"]
+       String.concat ["Utilities.extract_optional_field ~fieldname:\"";fieldname;"\" ~qresult ~tuple:tuple_number"]
     | false, Bool ->
-       String.concat ["Utilities.parse_bool_field_exn ~fieldname:\"";fieldname;"\" ~qresult"]
+       String.concat ["Utilities.parse_bool_field_exn ~fieldname:\"";fieldname;"\" ~qresult ~tuple:tuple_number"]
     | true, Bool ->
-       String.concat ["Utilities.parse_optional_bool_field_exn ~fieldname:\"";fieldname;"\" ~qresult"]
+       String.concat ["Utilities.parse_optional_bool_field_exn ~fieldname:\"";fieldname;"\" ~qresult ~tuple:tuple_number"]
     | false, CoreInt32 ->
-       String.concat ["Utilities.parse_int32_field_exn ~fieldname:\"";fieldname;"\" ~qresult"]
+       String.concat ["Utilities.parse_int32_field_exn ~fieldname:\"";fieldname;"\" ~qresult ~tuple:tuple_number"]
     | true, CoreInt32 ->
-       String.concat ["Utilities.parse_optional_int32_field_exn ~fieldname:\"";fieldname;"\" ~qresult"]
+       String.concat ["Utilities.parse_optional_int32_field_exn ~fieldname:\"";fieldname;"\" ~qresult ~tuple:tuple_number"]
     | false, CoreInt64 ->
-       String.concat ["Utilities.parse_int64_field_exn ~fieldname:\"";fieldname;"\" ~qresult"]
+       String.concat ["Utilities.parse_int64_field_exn ~fieldname:\"";fieldname;"\" ~qresult ~tuple:tuple_number"]
     | true, CoreInt64 ->
-       String.concat ["Utilities.parse_optional_int64_field_exn ~fieldname:\"";fieldname;"\" ~qresult"]
-    | true, Bignum -> String.concat ["Utilities.parse_optional_bignum_field_exn ~fieldname:\"";fieldname;"\" ~qresult"]
-    | false, Bignum -> String.concat ["Utilities.parse_bignum_field_exn ~fieldname:\"";fieldname;"\" ~qresult"]
-    | false, Float -> String.concat ["Utilities.parse_float_field_exn ~fieldname:\"";fieldname;"\" ~qresult"]
-    | true, Float -> String.concat ["Utilities.parse_optional_float_field_exn ~fieldname:\"";fieldname;"\" ~qresult"]
-    | false, Date -> String.concat ["Utilities.parse_date_field_exn ~fieldname:\"";fieldname;"\" ~qresult"]
-    | true, Date -> String.concat ["Utilities.parse_optional_date_field_exn ~fieldname:\"";fieldname;"\" ~qresult"]
-    | false, Time -> String.concat ["Utilities.parse_datetime_field_exn ~fieldname:\"";fieldname;"\" ~qresult"]
-    | true, Time -> String.concat ["Utilities.parse_optional_datetime_field_exn ~fieldname:\"";fieldname;"\" ~qresult"]
+       String.concat ["Utilities.parse_optional_int64_field_exn ~fieldname:\"";fieldname;"\" ~qresult ~tuple:tuple_number"]
+    | true, Bignum -> String.concat ["Utilities.parse_optional_bignum_field_exn ~fieldname:\"";fieldname;"\" ~qresult ~tuple:tuple_number"]
+    | false, Bignum -> String.concat ["Utilities.parse_bignum_field_exn ~fieldname:\"";fieldname;"\" ~qresult ~tuple:tuple_number"]
+    | false, Float -> String.concat ["Utilities.parse_float_field_exn ~fieldname:\"";fieldname;"\" ~qresult ~tuple:tuple_number"]
+    | true, Float -> String.concat ["Utilities.parse_optional_float_field_exn ~fieldname:\"";fieldname;"\" ~qresult ~tuple:tuple_number"]
+    | false, Date -> String.concat ["Utilities.parse_date_field_exn ~fieldname:\"";fieldname;"\" ~qresult ~tuple:tuple_number"]
+    | true, Date -> String.concat ["Utilities.parse_optional_date_field_exn ~fieldname:\"";fieldname;"\" ~qresult ~tuple:tuple_number"]
+    | false, Time -> String.concat ["Utilities.parse_datetime_field_exn ~fieldname:\"";fieldname;"\" ~qresult ~tuple:tuple_number"]
+    | true, Time -> String.concat ["Utilities.parse_optional_datetime_field_exn ~fieldname:\"";fieldname;"\" ~qresult ~tuple:tuple_number"]
 
-  (**
-   is_optional - is the field, of whatever type, optional in the type t of the module and nullable in the db?
-   t - the type of the field
-   *)
+  (**  is_optional - is the field, of whatever type, optional in the type t of the module and nullable in the db?
+   t - the type of the field   *)
   let converter_to_string_of_type ~is_optional ~t =
     let open Core in 
     match is_optional, t with
       false, String ->
       String.concat ["(conv (fun x -> \"'\" ^ (Mysql.real_escape conn x) ^ \"'\"))"]
     | true, String ->
-       String.concat ["(conv (fun x -> Utilities.serialize_optional_field ~field:x ~conn))"]
+       String.concat ["(conv (fun x -> Utilities.serialize_optional_field ~field:x))"]
     | false, Bool ->
        String.concat ["(conv (fun x -> if x then \"TRUE\" else \"FALSE\"))"]
     | true, Bool ->
-       String.concat ["(conv (fun x -> Utilities.serialize_optional_bool_field ~field:x ~conn))"]
+       String.concat ["(conv (fun x -> Utilities.serialize_optional_bool_field ~field:x))"]
     | false, CoreInt32 ->
        String.concat ["(conv (fun x -> Core.Int32.to_string x))"]
     | true, CoreInt32 ->

@@ -224,14 +224,14 @@ module Model = struct
     let helper_preamble =
       Core.String.concat
 	["    let rec helper accum qresult tuple_number count = \n";
-	 "      if tuple_number >= tuple_count then \n";
+	 "      if tuple_number >= count then \n";
 	 "        Core.Result.Ok accum \n      else\n";
 	 "        try "] in
     let suffix =
       String.concat 
 	["    let queryresult = conn#exec query in\n";
 	 "    let isSuccess = queryresult#status in\n";
-	 "    match isSuccess with\n    | Tuples_ok -> \n";
+	 "    match isSuccess with\n    | Tuples_ok\n    | Single_tuple -> \n";
          "       (match queryresult#ntuples with \n";
          "	| 0 -> (*should actually be impossible*)\n";
          "           let () = Utilities.closecon conn in Core.Result.Ok []\n";
@@ -245,7 +245,7 @@ module Model = struct
          "       let s = queryresult#error in \n";
          "       let () = Utilities.print_n_flush (Core.String.concat [\"model::get_fields_for_given_table() Query failed. Sql error? Error:\";s]) in \n";
          "       let () = Gc.full_major () in \n";
-         "       let () = Utilities.closecon conn in Core.Result.Ok String.Map.empty \n";
+         "       let () = Utilities.closecon conn in Core.Result.Ok [] \n";
          "    | Empty_query\n    | Copy_out\n    | Copy_in\n    | Copy_both\n    | Command_ok -> \n";
          "       (* let () = print_n_flush (Core.String.concat [\"Unexpected branch.\"]) in *)\n";
          "       let () = Gc.full_major () in \n" ;
@@ -311,7 +311,7 @@ module Model = struct
 	 for_each_field ~flist:t ~accum:(output::accum) in
     let fields_lines = for_each_field ~flist:fields_list ~accum:[] in
     String.concat ~sep:"\n" [preamble;fields_lines;"      in";suffix];;
-
+  
   let list_other_modules () =
     (*Refer to this project's implementation where possible; utilities MUST be locally provided using an include 
       statement (include Ocaml_db_model.Utilities) and customized over-ridden versions of the connections 
@@ -319,18 +319,22 @@ module Model = struct
     Core.String.concat ~sep:"\n" ["(*DONT FORGET to create your own Utilities module and to 'include Ocaml_db_model.Utilities' alongside";
                                   "any customized functions you may need*)";
                                   "module Utilities = Utilities.Utilities";
-				  "module Date_extended = Ocaml_psql_model.Date_extended";
-				  "module Date_time_extended = Ocaml_psql_model.Date_time_extended";
-				  "module Bignum_extended = Ocaml_psql_model.Bignum_extended";
+                                  "module CoreInt32_extended = Ocaml_pgsql_model.CoreInt32_extended";
+                                  "module CoreInt64_extended = Ocaml_pgsql_model.CoreInt64_extended";
+				  "module Date_extended = Ocaml_pgsql_model.Date_extended";
+				  "module Date_time_extended = Ocaml_pgsql_model.Date_time_extended";
+				  "module Bignum_extended = Ocaml_pgsql_model.Bignum_extended";
 				  "open Sexplib.Std\n"];;
-    let list_other_modules_for_mli () =
+  let list_other_modules_for_mli () =
     (*Refer to this project's implementation where possible; utilities MUST be locally provided using an include 
       statement and customized over-ridden versions of the connections establishment functions that require db 
-      credentials, plus any additional functions a user may want.*)
+      credentials, plus any additional functions a user may want.*)    
     Core.String.concat ~sep:"\n" ["module Utilities = Utilities.Utilities";
-				  "module Date_extended = Ocaml_psql_model.Date_extended";
-				  "module Date_time_extended = Ocaml_psql_model.Date_time_extended";
-				  "module Bignum_extended = Ocaml_psql_model.Bignum_extended\n"];;
+                                  "module CoreInt32_extended = Ocaml_pgsql_model.CoreInt32_extended";
+                                  "module CoreInt64_extended = Ocaml_pgsql_model.CoreInt64_extended";
+				  "module Date_extended = Ocaml_pgsql_model.Date_extended";
+				  "module Date_time_extended = Ocaml_pgsql_model.Date_time_extended";
+				  "module Bignum_extended = Ocaml_pgsql_model.Bignum_extended\n"];;
   let duplicate_clause_function ~fields () =
     let rec find_primary_key_field_name fs =
       match fs with
@@ -397,10 +401,10 @@ module Model = struct
        "      let values= Core.String.concat ~sep:\",\"   values_list in ";
        "      let on_update_clause = get_sql_insert_on_duplicate_clause () in ";
        "      let insert_statement = String.concat [insert_statement_start;values;on_update_clause] in ";
-       "      (*Print to inspect the sql:";
+       "      (*Print to inspect the sql:*)";
        "      let thecommand =";
        "        String.concat [\"BEGIN;\"(*;prefix*);insert_statement;\"COMMIT;\"] in";
-       "      let () = Utilities.print_n_flush (String.concat [\"\\n\";thecommand]) in*)";
+       "      (*let () = Utilities.print_n_flush (String.concat [\"\\n\";thecommand]) in*)";
        "      let result = conn#exec thecommand in";
        "      let status = result#status in";
        "      match status with";
@@ -434,7 +438,7 @@ module Model = struct
        "	            (String.concat [\"\\nEmpty result; failed to insert \\ ";
        "				     new records into \";tablename]) in";
        "         let () = Gc.full_major () in ";
-       "         let () = closecon conn in";
+       "         let () = Utilities.closecon conn in";
        "         Core.Result.Error";
        "	   (String.concat [\"\\nEmpty result; failed to insert new \\ ";
        "	  	           records into \";tablename])";
