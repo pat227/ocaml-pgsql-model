@@ -62,28 +62,12 @@ module Utilities = struct
   (*===========parsers=============*)
   let parse_boolean_field_exn ~field =
     match field with
-    (*  "1" -> let () = print_n_flush 
-			"\nutilities::parse_boolean_field_exn() 1 returning true" in true
-    | "0" -> let () = print_n_flush 
-			"\nutilities::parse_boolean_field_exn() 0 returning false" in false*)
-    | "YES" -> (*let () = print_n_flush 
-			  "\nutilities::parse_boolean_field_exn() YES returning true" in *) true 
-(*    | "yes" -> let () = print_n_flush 
-			  "\nutilities::parse_boolean_field_exn() yes returning true" in true 
-    | "true" -> let () = print_n_flush 
-			   "\nutilities::parse_boolean_field_exn() true returning true" in true 
-    | "TRUE" -> let () = print_n_flush 
-			   "\nutilities::parse_boolean_field_exn() TRUE returning true" in true*)
-    | "NO" -> (*let () = print_n_flush 
-			 "\nutilities::parse_boolean_field_exn() NO returning false" in *) false 
-(*    | "no" -> let () = print_n_flush 
-               "\nutilities::parse_boolean_field_exn() no returning false" in false 
-    | "false" -> let () = print_n_flush 
-               "\nutilities::parse_boolean_field_exn() false returning false" in false
-    | "FALSE" -> let () = print_n_flush 
-                   "\nutilities::parse_boolean_field_exn() FALSE returning false" in false*)
-    | _ -> raise (Failure "Utilities::parse_boolean_field unrecognized value")
-    
+      "t" -> (*let () = print_n_flush 
+			"\nutilities::parse_boolean_field_exn() 1 returning true" in*) true
+    | "f" -> (*let () = print_n_flush 
+			"\nutilities::parse_boolean_field_exn() 0 returning false" in*) false
+    | s -> raise (Failure (Core.String.concat["Utilities::parse_boolean_field unrecognized value:";s]))
+
 (*  let parse_optional_boolean_field_exn ~field =
     match field with
     | None -> None
@@ -108,7 +92,7 @@ module Utilities = struct
        raise (Failure "utilities.ml::extract_field_as_string_exn() failed. Most likely bad field name")
 
   let extract_optional_field ~fieldname ~(qresult:Postgresql.result) ~tuple =
-    if (qresult#getisnull 1 (qresult#fnumber fieldname)) then
+    if (qresult#getisnull tuple (qresult#fnumber fieldname)) then
       None
     else
       Some (extract_field_as_string_exn ~fieldname ~qresult ~tuple)
