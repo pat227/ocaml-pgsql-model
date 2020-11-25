@@ -56,8 +56,13 @@ as inputs to the Ocaml compiler. If used with many tables or tables with many
 fields, this project should hopefully save somebody a lot of time. At present
 almost all the types are take from Jane Street's Core libraries and this project
 supports Postgre databases. Future support native Ocaml types are
-contemplated. Mysql support is found in another project named "Ocaml-db-model". Each module would also include some support functions for queries
+contemplated. Mysql support is found in another project named "Ocaml-db-model".
+Each module would also include some support functions for queries
 and creating instances of type t from results of those queries from the same tables.
+
+Note that by accident, ppx_deriving_yojson and not ppx_yojson_conv, is required to successfully
+compile the modules output by this project. Perhaps that will be changed in future to use
+Jane Street's ppx_yojson_conv.
 
 This project does its own string parsing, rejects
 some combinations of data types and Ocaml data types where clipping
