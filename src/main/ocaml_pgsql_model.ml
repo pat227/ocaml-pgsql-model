@@ -3,7 +3,7 @@ module Model = Ocaml_pgsql_model.Model
 module Sql_supported_types = Ocaml_pgsql_model.Sql_supported_types
 module Command = struct
 (*===TODO===
-      1) Extend string type to be length aware and avoid truncation with mysql varchar and text field limits 
+      1) Extend string type to be length aware and avoid truncation with varchar and text field limits 
       3) Present user with ppx options and reject any not currently supported
       4) Add an option to use only primitive types and none of the extended types created in this project in case
       a user only wishes to take advantage of the creation of modules and doesn't care so much about field types

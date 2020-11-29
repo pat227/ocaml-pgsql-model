@@ -10,6 +10,8 @@ tables and fields in a database, which is not here supported (yet?). This librar
 seeks only to create valid Ocaml modules to describe existing tables, not the
 other way around.
 
+Requires >= Ocaml 4.08 as of November 2020.
+
 By way of example:
 Let us presume we have a table Foo with the following fields and types:
  A integer (signed 32 bit)
