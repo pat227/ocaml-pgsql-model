@@ -1,4 +1,4 @@
-(*Unfortunately Uint64 module does not define sexp converters, so we have to.*)
+(*Unfortunately Core.Int64 module does not define yojson, sexp converters, so we have to.*)
 module CoreInt64_extended :
 sig
   include (module type of Core.Int64)

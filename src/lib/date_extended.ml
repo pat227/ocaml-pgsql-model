@@ -1,5 +1,4 @@
-(*Core date includes sexp ppx extension, but not show, eq, ord (at least not 
-  explicitly), yojson, xml etc*)
+(*Core date includes sexp ppx extension, but not show, eq, ord (at least not explicitly), yojson, xml etc*)
 module Date_extended = struct
   include Core.Date
   (*type t = Core.Core_Date*)
