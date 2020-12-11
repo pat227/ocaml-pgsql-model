@@ -35,7 +35,7 @@ module Command = struct
                   Else user could specify non-existent or not yet installed ppx rewriters?*)
 		ppx_list in
 	   let body = Model.construct_body ~table_name:h ~map ~ppx_decorators ~fields2ignore ~comparable_modules
-					   ~allcomparable ~host ~user ~password ~database in
+					   ~allcomparable ~host ~user ~password ~database ~schema in
 	   let mli = Model.construct_mli ~table_name:h ~map ~ppx_decorators ~fields2ignore ~comparable_modules ~allcomparable in
 	   let () = Model.write_module ~outputdir:destination ~fname:(Core.String.concat [h;".ml"]) ~body:(Bytes.of_string body) in
 	   let () = Model.write_module ~outputdir:destination ~fname:(h ^ ".mli") ~body:(Bytes.of_string mli) in

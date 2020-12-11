@@ -23,7 +23,7 @@ module Model : sig
 		       ppx_decorators:string list -> fields2ignore: string list option ->
 		       comparable_modules:string list -> allcomparable:bool ->
 		       host:string -> user:string -> password:string ->
-		       database:string -> string
+		       database:string -> schema:string -> string
   val construct_mli : table_name:string -> map:t list Core.String.Map.t ->
 		      ppx_decorators:string list -> fields2ignore: string list option ->
 		      comparable_modules:string list -> allcomparable:bool -> string

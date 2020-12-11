@@ -81,6 +81,27 @@ additional safety when inter-operating with a db.
 At present this project will output modules with some ppx extensions by default:
 fields, show, sexp, eq, ord, and yojson.
 
+USAGE:
+Users can either manually invoke this project at the command line or incorporate invokation into your build system, such as Make files, dune, etc. This project first must be installed using opam. 
+
+USAGE WITH DUNE:
+The overall goal is to create a rule and an alias that invokes the a command line dependency that is this project after installation using opam.
+Within your source code directory, create a dune file, within which you use the "(include_subdirs unqualified)" directive.
+Use an alias to create the modules based on tables before compile-time.
+Include the following statement, or something similar, to direct dune to execute an alias:
+(preprocessor_deps (alias tables/tables_alias) (source_tree src/lib/tables))
+
+Within your source code subdirectory, create another subdirectory named "tables" and within that create another dune file in which to define the alias that creates the modules like so:
+(rule
+ (alias tables_alias)
+ (targets table_name_one.ml table_name_one.mli table_name_two.ml table_name_two.mli table_name_three.ml table_name_three.mli tables.ml)
+ (deps (:gen /home/<userhome>/.opam/<version>/bin/ocaml_mysql_model))
+ (action (run %{gen} -host <ip_of_db> -user <username> -password <password> -db <dbname> -table-list table_name_one,table_name_two,table_name_three -comparable-tables table_name_one,table_name_two,table_name_three -fields2ignore ts -ppx-decorators fields,eq,make,ord,sexp,show,yojson -destination <path_to_project>/_build/default/src/lib/tables/))
+ (mode fallback)
+)
+
+Create a second identical rule and alias within the same dune file that outputs to your "tables" subdirectory within your source code tree, such as <path_to_project>/src/lib/tables. Presently it appears dune copies source code over to the _build tree for compilation from the source code tree, and while our rule generates files within the source code tree, apparently that doesn't happen in time before dune copies source code from the source tree to the build tree. Use of dune locks doesn't seem to help. If anyone knows how to do this with just one rule instead of two with dune, please let me know.
+
 ----TODO----Command line options------
  -> Provide a version without Core?
  -> Plain modules output - define modules each with a name matching that of
@@ -214,27 +235,3 @@ ENUM -> unsupported. We can get the permitted values and create a type that can 
 
 NOTE:
 Take precautions with special chars in passwords or any other user supplied input, ie, single quote it or else the command line shell will screw you up. Double quotes still permit shell expansion.
-
-
-
-
-USAGE:
-Users can either manually invoke this project at the command line or incorporate invokation into your build system, such as Make files, dune, etc. This project first must be installed using opam. 
-
-USAGE WITH DUNE:
-The overall goal is to create a rule and an alias that invokes the a command line dependency that is this project after installation using opam.
-Within your source code directory, create a dune file, within which you use the "(include_subdirs unqualified)" directive.
-Use an alias to create the modules based on tables before compile-time.
-Include the following statement, or something similar, to direct dune to execute an alias:
-(preprocessor_deps (alias tables/tables_alias) (source_tree src/lib/tables))
-
-Within your source code subdirectory, create another subdirectory named "tables" and within that create another dune file in which to define the alias that creates the modules like so:
-(rule
- (alias tables_alias)
- (targets table_name_one.ml table_name_one.mli table_name_two.ml table_name_two.mli table_name_three.ml table_name_three.mli tables.ml)
- (deps (:gen /home/<userhome>/.opam/<version>/bin/ocaml_mysql_model))
- (action (run %{gen} -host <ip_of_db> -user <username> -password <password> -db <dbname> -table-list table_name_one,table_name_two,table_name_three -comparable-tables table_name_one,table_name_two,table_name_three -fields2ignore ts -ppx-decorators fields,eq,make,ord,sexp,show,yojson -destination <path_to_project>/_build/default/src/lib/tables/))
- (mode fallback)
-)
-
-Create a second identical rule and alias within the same dune file that outputs to your "tables" subdirectory within your source code tree, such as <path_to_project>/src/lib/tables. Presently it appears dune copies source code over to the _build tree for compilation from the source code tree, and while our rule generates files within the source code tree, apparently that doesn't happen in time before dune copies source code from the source tree to the build tree. Use of dune locks doesn't seem to help. If anyone knows how to do this with just one rule instead of two with dune, please let me know.

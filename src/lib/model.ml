@@ -358,10 +358,10 @@ module Model = struct
        "      match fieldslist with";
        "      | [] -> Core.String.concat ~sep:\",\" clause";
        "      | h :: t ->";
-       "	 let onefield = Core.String.concat ~sep:\"\" [h;\"=VALUES(\";h;\")\"] in";
+       "	 let onefield = Core.String.concat ~sep:\"\" [h;\" = EXCLUDED.\";h] in";
        "         create_set_values t (onefield::clause) in";
        "    let set_clause = create_set_values fields_less_key [] in ";
-       "    Core.String.concat [\" ON DUPLICATE KEY UPDATE \";set_clause;\";\"];;\n"]
+       (Core.String.concat ~sep:"" ["    Core.String.concat [\" ON CONFLICT (";primary_key_name;") DO UPDATE SET \";set_clause;\";\"];;\n"])]
 
   let construct_save_function ~table_name =
     Core.String.concat
@@ -453,9 +453,9 @@ module Model = struct
        "      Core.Result.Ok ();;\n"];;
 
   let construct_body ~table_name ~map ~ppx_decorators ~fields2ignore ~comparable_modules ~allcomparable
-		     ~host ~user ~password ~database =
+		     ~host ~user ~password ~database ~schema =
     let open Core in
-    let module_first_char = String.get table_name 0 in
+    let module_first_char = Core.String.get table_name 0 in
     let uppercased_first_char = Char.uppercase module_first_char in
     let module_name = Bytes.of_string table_name in
     let make_module_comparable =
@@ -468,7 +468,7 @@ module Model = struct
        build time. It might be better to include this module in another module in a different \n \
        directory. *)\n\n" in 
     let start_module =
-      String.concat [prefix_notice;"module ";(Bytes.to_string module_name);
+      Core.String.concat [prefix_notice;"module ";(Bytes.to_string module_name);
 		       " = struct\n"] in
     let other_modules = list_other_modules () in
     let indentation = "  " in 
@@ -491,10 +491,10 @@ module Model = struct
     (*filter the list of fields against any that user indicated should be excluded*)
     let tfields_list =
       let tfields_list_temp = List.rev tfields_list_reversed in
-      List.filter tfields_list_temp
+      Core.List.filter tfields_list_temp
 		  ~f:(fun x ->
 		      let matches =
-			List.count fields_to_omit
+			Core.List.count fields_to_omit
 				   ~f:(fun colname2omit -> String.equal x.col_name colname2omit) in 
 		      matches = 0 
 		     ) in 
@@ -557,19 +557,19 @@ module Model = struct
       match ppx_decorators with
       | [] ->
 	 if make_module_comparable then
-	   String.concat [almost_done;"end";"  include T";"  module T2 = Core.Comparable.Make(T)"]
+	   Core.String.concat [almost_done;"end";"  include T";"  module T2 = Core.Comparable.Make(T)"]
 	 else
-	   String.concat [almost_done;"end"]
+	   Core.String.concat [almost_done;"end"]
       | _h :: _t ->
 	 let ppx_extensions = String.concat ~sep:"," ppx_decorators in
 	 if make_module_comparable then
-	   String.concat [almost_done;" [@@deriving ";ppx_extensions;"]";"\n  end\n";
+	   Core.String.concat [almost_done;" [@@deriving ";ppx_extensions;"]";"\n  end\n";
 			  "\n  include T";"\n  module T2 = Core.Comparable.Make(T)\n"]
 	 else 
-	   String.concat [almost_done;" [@@deriving ";ppx_extensions;"]\n"] in
+	   Core.String.concat [almost_done;" [@@deriving ";ppx_extensions;"]\n"] in
     (*Insert a few functions and variables.*)
     let table_related_lines =
-      String.concat ["  let tablename=\"";table_name;
+      Core.String.concat ["  let tablename=\"";table_name;
 		     "\" \n\n  let get_tablename () = tablename;;\n"] in
     (*General purpose query...client code can create others*)
     let sql_query_function =
@@ -577,21 +577,21 @@ module Model = struct
 		     "    let open Core in\n";
 		     "    let fs = Fields.names in \n";
 		     "    let fs_csv = String.concat ~sep:\",\" fs in \n";
-		     "    String.concat [\"SELECT \";fs_csv;\" FROM ";database;".\";tablename;\" WHERE TRUE;\"];;\n"] in
+		     "    String.concat [\"SELECT \";fs_csv;\" FROM ";database;".\";tablename;\" WHERE TRUE \"];;\n"] in
     let query_function = construct_sql_query_function ~table_name ~fields_list:tfields_list ~host
 						      ~user ~password ~database in
     (*Saving records to SQL would also be useful*)
     let toSQLfunction =
       construct_sql_serialize_function ~fields_list:tfields_list in
     let insert_prefix =
-      String.concat
+      Core.String.concat
 	["  let get_sql_insert_statement () =\n";
 	 "    let fs = Fields.names in\n";
 	 "    let csv_fields = Core.String.concat fs ~sep:\",\" in\n";
-	 "    Core.String.concat [\"INSERT INTO ";database;".\";tablename;\" (\";csv_fields;\") VALUES \"];;\n";
+	 "    Core.String.concat [\"INSERT INTO ";schema;".\";tablename;\" (\";csv_fields;\") VALUES \"];;\n";
 	] in
     let generate_values_of_list =
-      String.concat
+      Core.String.concat
 	["  let generate_values_for_sql_of_list ~records ~conn =\n";
 	 "    let rec helper l acc = \n";
 	 "      match l with\n";
@@ -603,7 +603,7 @@ module Model = struct
 	] in
     let duplicate_clause = duplicate_clause_function ~fields:tfields_list () in
     let save_function = construct_save_function ~table_name in
-    String.concat ~sep:"\n" [finished_type_t;table_related_lines;sql_query_function;
+    Core.String.concat ~sep:"\n" [finished_type_t;table_related_lines;sql_query_function;
 			     query_function;insert_prefix;duplicate_clause;toSQLfunction;
 			     generate_values_of_list;save_function;"end"];;
     

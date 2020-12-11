@@ -62,10 +62,12 @@ module Utilities = struct
   (*===========parsers=============*)
   let parse_boolean_field_exn ~field =
     match field with
-      "t" -> (*let () = print_n_flush 
-			"\nutilities::parse_boolean_field_exn() 1 returning true" in*) true
-    | "f" -> (*let () = print_n_flush 
-			"\nutilities::parse_boolean_field_exn() 0 returning false" in*) false
+    | "YES"
+      | "t" -> (*let () = print_n_flush 
+		 "\nutilities::parse_boolean_field_exn() 1 returning true" in*) true
+    | "NO"
+      | "f" -> (*let () = print_n_flush 
+		 "\nutilities::parse_boolean_field_exn() 0 returning false" in*) false
     | s -> raise (Failure (Core.String.concat["Utilities::parse_boolean_field unrecognized value:";s]))
 
 (*  let parse_optional_boolean_field_exn ~field =
