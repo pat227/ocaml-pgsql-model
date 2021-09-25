@@ -5,7 +5,7 @@ module Postgresql = Postgresql
 module Utilities : sig
   val print_n_flush : string -> unit
   val print_n_flush_alist : sep:string -> string list -> unit
-  val getcon : ?host:string -> dbname:string -> password:string -> user:string -> Postgresql.connection
+  val getcon : ?host:string -> dbname:string -> password:string -> user:string -> unit -> Postgresql.connection
   val getcon_defaults : unit -> Postgresql.connection
   val closecon : Postgresql.connection ->  unit
   val serialize_optional_field : field:string option -> conn:Postgresql.connection -> string

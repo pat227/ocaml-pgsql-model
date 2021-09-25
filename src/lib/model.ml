@@ -34,7 +34,7 @@ module Model = struct
            AND T.column_name=";schema;".information_schema.columns.column_name \
            WHERE ";schema;".information_schema.columns.table_name='";table_name;"';"] in
     let () = Utilities.print_n_flush fields_query in 
-    let conn = Utilities.getcon ~host ~user ~password ~dbname:database in
+    let conn = Utilities.getcon ~host ~user ~password ~dbname:database () in
     let rec helper accum qresult tuple_number tuple_count =
       if tuple_number >= tuple_count then
         Core.Result.Ok accum

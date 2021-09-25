@@ -28,7 +28,7 @@ module Table = struct
 	  let () = Utilities.print_n_flush ("\ntable.ml::Error " ^ (Exn.to_string err) ^
 				              " getting tables from db.") in
 	  Core.Result.Error "table.ml::get_tables() line 30" in
-    let conn = Utilities.getcon ~host ~user ~password ~dbname:database in 
+    let conn = Utilities.getcon ~host ~user ~password ~dbname:database () in 
     let queryresult = conn#exec table_query in
     let isSuccess = queryresult#status in
     match isSuccess with

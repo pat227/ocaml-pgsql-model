@@ -5,7 +5,7 @@ module Postgresql = Postgresql
 open Core
 module Utilities = struct
 
-  let getcon ?(host="127.0.0.1") ~dbname ~password ~user =
+  let getcon ?(host="127.0.0.1") ~dbname ~password ~user () =
     new Postgresql.connection ~host ~dbname ~password ~user ();;
 
   let getcon_defaults () =
